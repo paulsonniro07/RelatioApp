@@ -45,8 +45,8 @@ fi
 echo "==> Generating migration: $MIGRATION_NAME"
 ConnectionStrings__DefaultConnection="Host=localhost;Database=${DB_NAME};Username=${DB_USER};Password=${DB_PASSWORD}" \
   dotnet ef migrations add "$MIGRATION_NAME" \
-    --project src/SlipGaji.Infrastructure \
-    --startup-project src/SlipGaji.API \
+    --project src/RelatioApp.Infrastructure \
+    --startup-project src/RelatioApp.API \
     --output-dir Persistence/Migrations \
     --verbose
 

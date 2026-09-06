@@ -1,0 +1,64 @@
+@import "tailwindcss";
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  -webkit-font-smoothing: antialiased;
+}
+
+/*
+ * Default theme tokens (Cute Pastel).
+ * ThemeProvider overrides these live on <html> — this block prevents a
+ * first-paint flash before React hydrates and lets utility classes like
+ * `bg-[var(--canvas-background)]` resolve anywhere in the app.
+ */
+:root {
+  /* App shell & canvas */
+  --app-background: #f3ecdf;
+  --canvas-background: #f9f4ec;
+  --surface-background: #ffffff;
+  --border-color: #eae0cf;
+  --control-hover: #f1eae0;
+
+  /* Text */
+  --text-primary: #2e2a24;
+  --text-secondary: #8a8272;
+  --text-muted: #b4ac9c;
+
+  /* Accent (primary buttons / selection) */
+  --accent: #97a3f9;
+  --accent-text: #2e2a24;
+  --accent-soft: rgba(151, 163, 249, 0.18);
+
+  /* Node + connectors */
+  --node-background: #ffffff;
+  --node-border: #e8ddcc;
+  --node-radius: 16px;
+  --node-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+  --node-hover-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+  --selected-border: #97a3f9;
+  --selected-shadow: 0 0 0 3px rgba(151, 163, 249, 0.25), 0 2px 8px rgba(0, 0, 0, 0.08);
+  --connector-color: #c9bfa8;
+  --connector-width: 1.5px;
+  --connector-color-active: #a39578;
+  --connector-color-spouse: #e8a0a0;
+  --handle-color: #b7ac93;
+  --drag-preview-color: #97a3f9;
+
+  /* Relationship-type card tints (Cute Pastel defaults) */
+  --node-background-grandparent: #f3f8ee;
+  --node-background-parent: #e9f2fc;
+  --node-background-spouse: #fdedeb;
+  --node-background-child: #fdf2dc;
+  --node-background-sibling: #e3f4f0;
+  --node-background-manager: #edebfc;
+  --node-background-report: #e3f0fc;
+
+  --badge-bg: #f1edfb;
+  --badge-text: #8b7fe8;
+}

@@ -17,10 +17,11 @@ interface ButtonProps extends React.ButtonHTMLAttributes<HTMLButtonElement> {
 }
 
 const variantClasses: Record<ButtonVariant, string> = {
-  primary:   'bg-blue-600 hover:bg-blue-700 text-white',
-  secondary: 'bg-gray-100 hover:bg-gray-200 text-gray-700',
+  // Colors come from the active theme's CSS variables (see features/tree/theme).
+  primary:   'bg-[var(--accent)] text-[var(--accent-text)] hover:brightness-95',
+  secondary: 'bg-[var(--control-hover)] text-[var(--text-primary)] hover:brightness-95',
   danger:    'bg-red-600 hover:bg-red-700 text-white',
-  ghost:     'hover:bg-gray-100 text-gray-600',
+  ghost:     'hover:bg-[var(--control-hover)] text-[var(--text-secondary)] hover:text-[var(--text-primary)]',
 };
 
 export function Button({ variant='primary', size='md', loading, children, ...props }: ButtonProps) {

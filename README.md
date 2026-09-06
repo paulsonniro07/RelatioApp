@@ -1,193 +1,108 @@
-# [PROJECT_NAME]
+# RelatioApp
 
-[2-3 lines: what this project does]
+> Interactive **family tree** and **org chart** builder — *one chart engine, many visual personalities.*
 
-## Stack
-- **API:** .NET 10, ASP.NET Core, PostgreSQL, JWT
-- **Client:** React 18, TypeScript, Tailwind CSS, Vite
-- **Deploy:** Railway (API) + Vercel (Client)
-- **AI Coding Agent:** Claude Code OR Cline — pick one below
+RelatioApp is a full-stack chart editor for organizing people and roles on a canvas. Build a family tree or an org chart, link people by dragging and dropping, restyle the entire chart through swappable themes, and export the result as a polished PNG.
 
 ---
 
-## 🚀 Quick Start After Cloning
+## ✨ Features
 
-### Step 1 — Replace placeholders
-In VS Code: `Ctrl+Shift+H` (Windows) or `Cmd+Shift+H` (Mac)
-- Find: `[PROJECT_NAME]`
-- Replace: your actual project name (e.g. `CRMSystem`)
-- Click **Replace All**
+**Chart editing**
+- Two chart modes per chart: **Family tree** and **Org chart** (switch anytime).
+- Drag cards to reposition; drop a card **onto** another to reparent, or **beside** a card in family mode to link a **partner/spouse**.
+- Reconnect relationships by dragging the edge handles at a card's top/bottom.
+- Double-click a name to rename inline; add roles/relationships, notes, levels, and photos.
+- Auto layout (tiered Reingold–Tilford style with spouse alignment) and reset.
 
-Do the same for `[ProjectName]` (PascalCase used in .NET filenames).
+**Node cards**
+- Relationship-aware cards in Cute Pastel: tinted card background + 4px accent strip per relationship type (grandparent, parent, spouse, child, sibling, manager, report).
+- Circular avatars: show an **uploaded photo**, with colored-initials as the fallback — one renderer, consistent 44px treatment everywhere (canvas + exports).
+- Three content lines: name, role/relationship with a persona icon, and a note/trait/level line.
 
-### Step 2 — Setup environment
-```bash
-cp .env.example .env
-```
-Open `.env` and fill in all values.
+**Themes ("one chart engine, many personalities")**
+- Token-based theme layer (CSS custom properties) with six personalities: **Cute Pastel** (default), **Professional**, **Minimal**, **School / Playful**, **Project Team / Tech**, and **Dark Neon**.
+- Slide-in **Appearance panel** with live per-theme previews.
+- Per-theme canvas decorations (botanical leaves, doodles, circuit traces, neon glows, dot grid) that are **margin-safe** — they track the tree's bounding box and are excluded from exports.
 
-### Step 3 — Set up your AI coding agent
+**Export**
+- Export the chart as **PNG** at 2× pixel density with a tight crop around the tree.
+- Framed “card” output (rounded, soft shadow, chart title) or **transparent** background.
+- File name follows the theme: `{chart-name}-{theme-name}.png`.
 
-This template supports **two agents** — pick whichever you're using. Both read from the same `agent_docs/` and follow the same architecture rules; only the rule file format differs.
-
-<table>
-<tr>
-<th>🟣 Claude Code</th>
-<th>🔵 Cline</th>
-</tr>
-<tr>
-<td>
-
-Copy the contents of [`.claude/CLAUDE.md`](.claude/CLAUDE.md) into `~/.claude/CLAUDE.md`
-so Claude applies these standards to every project.
-
-```bash
-# Mac/Linux
-mkdir -p ~/.claude && cp .claude/CLAUDE.md ~/.claude/CLAUDE.md
-
-# Windows (PowerShell)
-New-Item -ItemType Directory -Force ~/.claude
-Copy-Item .claude/CLAUDE.md ~/.claude/CLAUDE.md
-```
-
-Verify: ask Claude *"What are my global coding standards?"*
-
-</td>
-<td>
-
-Nothing to install globally. Cline reads `.clinerules` automatically the moment you open this folder in VS Code — at root, and again inside `api/` or `client/` depending on where you're working.
-
-Just make sure the Cline extension is installed and pointed at your API key in the Cline sidebar settings.
-
-Verify: ask Cline *"What are the project rules?"*
-
-</td>
-</tr>
-</table>
-
-### Step 4 — Scaffold the .NET solution
-```bash
-cd api
-dotnet new sln -n [PROJECT_NAME]
-dotnet new classlib -n [PROJECT_NAME].Domain -f net10.0 -o src/[PROJECT_NAME].Domain
-dotnet new classlib -n [PROJECT_NAME].Application -f net10.0 -o src/[PROJECT_NAME].Application
-dotnet new classlib -n [PROJECT_NAME].Infrastructure -f net10.0 -o src/[PROJECT_NAME].Infrastructure
-dotnet new webapi -n [PROJECT_NAME].API -f net10.0 -o src/[PROJECT_NAME].API
-dotnet sln add src/[PROJECT_NAME].Domain/[PROJECT_NAME].Domain.csproj
-dotnet sln add src/[PROJECT_NAME].Application/[PROJECT_NAME].Application.csproj
-dotnet sln add src/[PROJECT_NAME].Infrastructure/[PROJECT_NAME].Infrastructure.csproj
-dotnet sln add src/[PROJECT_NAME].API/[PROJECT_NAME].API.csproj
-dotnet build
-```
-
-### Step 5 — Scaffold the React app
-```bash
-cd client
-npm create vite@latest . -- --template react-ts
-npm install
-npm install tailwindcss @tailwindcss/vite axios react-router-dom
-npm install -D @types/node
-```
-
-### Step 6 — Let your agent build the foundation
-
-<table>
-<tr>
-<th>🟣 Claude Code</th>
-<th>🔵 Cline</th>
-</tr>
-<tr>
-<td>
-
-Open VS Code → click ⚡ Claude panel → open terminal in `api/`:
-```
-/plan setup Clean Architecture foundation with BaseEntity, PaginationFilter,
-IGenericRepository, GlobalExceptionMiddleware, AuditEntityInterceptor,
-JWT auth, PostgreSQL EF Core, and Program.cs wiring
-```
-
-Then in `client/`:
-```
-/plan setup frontend foundation with AuthContext, Axios interceptor,
-usePermissions hook, PermissionRoute, Layout sidebar, own UI component
-library (Button, Input, Badge, Spinner, EmptyState, Pagination, SearchInput, Modal),
-and React Router setup
-```
-
-</td>
-<td>
-
-Open the Cline panel in `api/` and describe the same request in plain language — Cline has no slash commands, but `.clinerules` already tells it to plan first and wait for approval:
-```
-Plan a Clean Architecture foundation with BaseEntity, PaginationFilter,
-IGenericRepository, GlobalExceptionMiddleware, AuditEntityInterceptor,
-JWT auth, PostgreSQL EF Core, and Program.cs wiring. Don't code yet.
-```
-
-Then in `client/`:
-```
-Plan a frontend foundation with AuthContext, Axios interceptor,
-usePermissions hook, PermissionRoute, Layout sidebar, own UI component
-library (Button, Input, Badge, Spinner, EmptyState, Pagination, SearchInput, Modal),
-and React Router setup. Don't code yet.
-```
-
-</td>
-</tr>
-</table>
-
-### Step 7 — Run everything
-```bash
-# From project root
-docker-compose up --build
-```
+**Backend & data**
+- Charts and nodes persisted via an ASP.NET Core API + PostgreSQL (soft-delete based).
+- Reference org + family charts are auto-seeded on first load.
+- Uploaded photos are stored and served by the API.
 
 ---
 
-## 📋 Daily Commands
+## 🧱 Tech stack
 
-```bash
-# New migration
-cd api && ./migrate.sh AddCustomerTable
+| Layer | Tech |
+|---|---|
+| API | .NET 10 / ASP.NET Core, Clean Architecture (Domain · Application · Infrastructure · API), EF Core + PostgreSQL, JWT auth, Swagger |
+| Client | React 18, TypeScript, Tailwind CSS 4, Vite, Axios, `html-to-image` (PNG export) |
+| Infra | Docker Compose (Postgres + API + client), Railway/Vercel deployment targets |
+
 ```
-
-| Task | 🟣 Claude Code | 🔵 Cline|
-|---|---|---|
-| Plan before coding | `/plan [describe feature]` | "Plan [describe feature]. Don't code yet." |
-| Scaffold full module | `/new-module [ModuleName]` | "Scaffold a new module called [ModuleName] following the module checklist in the rules." |
-| Review against standards | `/review` | "Review this against the architecture, soft delete, and pagination rules." |
-| Root-cause bug fix | `/fix [describe bug]` | "Fix this bug — find the root cause first: [describe bug]" |
-
-Cline has no built-in slash commands, so these are typed as plain instructions — `.clinerules` already primes it to follow the same plan → approve → build → verify workflow as Claude Code's commands.
-
----
-
-## 📁 Structure
-```
-[PROJECT_NAME]/
-├── api/                 ← ASP.NET Core API
-│   ├── .claude/         ← API-specific Claude Code rules
-│   ├── .cline/           ← API-specific Cline rules
-│   ├── .clinerules      ← Cline entry point (api scope)
-│   ├── agent_docs/      ← Architecture, schema, contracts docs (shared by both agents)
-│   ├── src/             ← .NET source projects
-│   ├── migrations/      ← EF Core migrations
-│   ├── Dockerfile.api
-│   └── migrate.sh
-├── client/              ← React Frontend
-│   ├── .claude/         ← Frontend-specific Claude Code rules
-│   ├── .cline/           ← Frontend-specific Cline rules
-│   ├── .clinerules      ← Cline entry point (client scope)
-│   ├── agent_docs/      ← Component patterns, UX guide, state docs (shared by both agents)
-│   ├── src/             ← React source
-│   ├── Dockerfile
-│   └── nginx.conf
-├── .claude/             ← Root monorepo Claude Code context
-├── .cline/               ← Root monorepo Cline rules
-├── .clinerules          ← Cline entry point (root scope)
-├── .env.example         ← All env vars documented
-├── .gitignore
+relatioapp/
+├── api/        → ASP.NET Core API (Clean Architecture, src/RelatioApp.{Domain,Application,Infrastructure,API})
+├── client/     → React 18 + TypeScript frontend (src/features/tree = chart engine & themes)
+├── .clinerules → Cline rules (root scope)
+├── .cline/ .claude/ agent_docs/ → coding standards & docs (Cline/Claude)
 └── docker-compose.yml
 ```
 
-> Both `.claude/` and `.cline/` exist so the template works whether you're running Claude Code or Cline — they read the same architectural standards, just in the format each tool expects. `agent_docs/` is the shared source of truth referenced by both.
+---
+
+## 🚀 Getting started
+
+### 1. Configure environment
+```bash
+cp .env.example .env
+```
+Fill in the required values — at minimum `DB_PASSWORD`, `JWT_SECRET`, and the `BOOTSTRAP_ADMIN_*` account. Defaults: API on `8080`, client on `3000` (see `.env.example` for all keys).
+
+### 2. Run everything (Docker)
+```bash
+docker compose up --build
+```
+- App: <http://localhost:3000>
+- API / Swagger (dev): <http://localhost:8080/swagger>
+
+On first load the API seeds a sample **org chart** and a sample **family tree**.
+
+### 3. Local development (no Docker)
+```bash
+# API (needs a running Postgres and the .env connection values)
+cd api
+dotnet run --project src/RelatioApp.API
+
+# Client (separate terminal)
+cd client
+npm install
+npm run dev          # http://localhost:5173
+```
+For the client outside Docker, set `VITE_API_BASE_URL` to the API origin (e.g. `http://localhost:8080/api`) in `.env`/`.env.local`.
+
+---
+
+## 🛠 Daily commands
+
+| Task | Command |
+|---|---|
+| Run everything | `docker compose up --build` |
+| API only | `cd api && dotnet run --project src/RelatioApp.API` |
+| Client only | `cd client && npm run dev` |
+| Add an EF migration | `cd api && ./migrate.sh MyMigrationName` |
+| Verify client | `cd client && npm run typecheck && npm run build` |
+| Verify API | `cd api && dotnet build` |
+
+---
+
+## 🔐 Configuration & hygiene
+
+- **Secrets live only in `.env`** — the file is gitignored and never committed. `.env.example` documents every key (leave values blank there).
+- Local photo uploads are written to `uploads/` (gitignored); Docker uses the named `uploads_data` volume.
+- Coding rules for the AI agents (Cline/Claude) live in `.clinerules`, `.cline/`, `.claude/`, and `agent_docs/`; they cover architecture, soft delete, pagination, searchable dropdowns, and git workflow.

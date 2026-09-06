@@ -22,6 +22,9 @@ node_modules/
 dist/
 .next/
 
+# Uploaded node photos (local-dev folder when not using the Docker volume)
+uploads/
+
 # ─── OS ─────────────────────────────────────────────────
 .DS_Store
 Thumbs.db

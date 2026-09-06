@@ -3,10 +3,11 @@ FROM mcr.microsoft.com/dotnet/sdk:10.0 AS build
 WORKDIR /app
 
 COPY *.sln .
+COPY Directory.Packages.props .
 COPY src/ src/
 RUN dotnet restore
 
-RUN dotnet publish src/[PROJECT_NAME].API/[PROJECT_NAME].API.csproj \
+RUN dotnet publish src/RelatioApp.API/RelatioApp.API.csproj \
     -c Release -o /app/publish --no-restore
 
 # ── Stage 2: Runtime ────────────────────────────────────
@@ -16,4 +17,4 @@ WORKDIR /app
 COPY --from=build /app/publish .
 
 EXPOSE 8080
-ENTRYPOINT ["dotnet", "[PROJECT_NAME].API.dll"]
+ENTRYPOINT ["dotnet", "RelatioApp.API.dll"]
