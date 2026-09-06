@@ -43,7 +43,7 @@ RelatioApp is a full-stack chart editor for organizing people and roles on a can
 |---|---|
 | API | .NET 10 / ASP.NET Core, Clean Architecture (Domain · Application · Infrastructure · API), EF Core + PostgreSQL, JWT auth, Swagger |
 | Client | React 18, TypeScript, Tailwind CSS 4, Vite, Axios, `html-to-image` (PNG export) |
-| Infra | Docker Compose (Postgres + API + client), Railway/Vercel deployment targets |
+| Infra | Docker Compose (Postgres + API + client), Vercel static (client, browser-storage mode) or Railway (API) |
 
 ```
 relatioapp/
@@ -85,6 +85,28 @@ npm install
 npm run dev          # http://localhost:5173
 ```
 For the client outside Docker, set `VITE_API_BASE_URL` to the API origin (e.g. `http://localhost:8080/api`) in `.env`/`.env.local`.
+
+### Zero-backend mode — no server, no database ($0)
+
+The client ships with a **browser-localStorage data source** so the whole app
+(including the auto-seeded Org + Family examples, photo avatars, themes and
+PNG export) runs as a pure static site. Data lives in the visitor's browser.
+
+```bash
+# build the client with local persistence
+cd client
+VITE_DATA_SOURCE=local npm run build
+```
+
+**Vercel deployment** (single static project):
+
+1. Import the repo → **Root Directory**: `client`, Framework Preset **Vite**.
+2. Add project env var `VITE_DATA_SOURCE = local` (leave `VITE_API_BASE_URL` unset).
+3. Deploy — no database, no secrets, no cold starts.
+
+> Trade-offs: charts are tied to one browser/profile (no cross-device sync) and
+> clearing site data erases them. Re-enable the backend later by setting
+> `VITE_DATA_SOURCE=api` — no code changes needed.
 
 ---
 

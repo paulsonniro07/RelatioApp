@@ -6,6 +6,7 @@ import { Input } from '@/components/ui/Input';
 import { Modal } from '@/components/ui/Modal';
 import { PencilIcon, TrashIcon } from '@/components/ui/icons';
 import { useToast } from '@/components/ui/Toast';
+import { getErrorMessage } from '@/lib/errors';
 import { ModeToggle } from '@/features/tree/components/ModeToggle';
 import { useTreeChart } from '@/hooks/useTreeChart';
 import type { ChartMode, ChartSummary } from '@/features/tree/types';
@@ -13,11 +14,6 @@ import type { ChartMode, ChartSummary } from '@/features/tree/types';
 interface ChartPickerProps {
   open: boolean;
   onClose: () => void;
-}
-
-function errorMessage(error: unknown): string {
-  const data = (error as { response?: { data?: { message?: string } } })?.response?.data;
-  return data?.message ?? 'Something went wrong';
 }
 
 export function ChartPicker({ open, onClose }: ChartPickerProps) {
@@ -46,7 +42,7 @@ export function ChartPicker({ open, onClose }: ChartPickerProps) {
       setName('');
       onClose();
     } catch (err) {
-      setError(errorMessage(err));
+      setError(getErrorMessage(err));
     }
   };
 
@@ -68,7 +64,7 @@ export function ChartPicker({ open, onClose }: ChartPickerProps) {
       await renameChart(renamingId, trimmed);
       setRenamingId(null);
     } catch (err) {
-      setRenameError(errorMessage(err));
+      setRenameError(getErrorMessage(err));
     }
   };
 
@@ -78,8 +74,8 @@ export function ChartPicker({ open, onClose }: ChartPickerProps) {
       await deleteChart(deletingChart.id);
       setDeletingChart(null);
       onClose();
-    } catch {
-      toastError('Failed to delete chart');
+    } catch (err) {
+      toastError(getErrorMessage(err, 'Failed to delete chart'));
       setDeletingChart(null);
     }
   };

@@ -20,6 +20,7 @@ import {
 } from '@/components/ui/icons';
 import { Spinner } from '@/components/ui/Spinner';
 import { useToast } from '@/components/ui/Toast';
+import { getErrorMessage } from '@/lib/errors';
 import { ChartPicker } from '@/features/tree/components/ChartPicker';
 import { LevelLegend } from '@/features/tree/components/LevelLegend';
 import { NodeForm } from '@/features/tree/components/NodeForm';
@@ -131,8 +132,10 @@ export function TreeChartPage() {
         toastSuccess('Node created');
       }
       closeForm();
-    } catch {
-      toastError(editingId ? 'Failed to update node' : 'Failed to create node');
+    } catch (err) {
+      toastError(
+        getErrorMessage(err, editingId ? 'Failed to update node' : 'Failed to create node'),
+      );
     }
   };
 

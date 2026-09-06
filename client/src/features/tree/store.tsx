@@ -10,7 +10,7 @@ import {
 
 import { computeAutoLayout, computeDepths } from './layout';
 import { createSampleChart } from './sampleData';
-import { chartService } from './service';
+import { treeDataSource } from './storage';
 import type { Chart, ChartMode, ChartSummary, TreeNode, TreeNodeInput } from './types';
 
 export interface TreeChartState {
@@ -97,7 +97,7 @@ async function createSampleChartInDb(
     (a, b) => (depths.get(a.id) ?? 0) - (depths.get(b.id) ?? 0),
   );
 
-  const chart = await chartService.createChart({
+  const chart = await treeDataSource.createChart({
     name: uniqueName(reserveNames, sample.name),
     mode: sample.mode,
     isExample,
@@ -106,7 +106,7 @@ async function createSampleChartInDb(
   const idMap = new Map<string, string>();
   for (const sampleNode of ordered) {
     const position = positions.get(sampleNode.id);
-    const created = await chartService.createNode(chart.id, {
+    const created = await treeDataSource.createNode(chart.id, {
       name: sampleNode.name,
       parentId: sampleNode.parentId ? (idMap.get(sampleNode.parentId) ?? null) : null,
       partnerId: sampleNode.partnerId ? (idMap.get(sampleNode.partnerId) ?? null) : null,
@@ -120,7 +120,7 @@ async function createSampleChartInDb(
     idMap.set(sampleNode.id, created.id);
   }
 
-  const full = await chartService.getChart(chart.id);
+  const full = await treeDataSource.getChart(chart.id);
   return full;
 }
 
@@ -192,18 +192,18 @@ export function TreeChartProvider({ children }: { children: ReactNode }) {
     setState((s) => ({ ...s, loading: true, error: null }));
     try {
       // Ensure the reference examples exist before we pick the chart to show.
-      const charts = await seedExamples(await chartService.getCharts());
+      const charts = await seedExamples(await treeDataSource.getCharts());
       const current = stateRef.current.chart;
       let chart: Chart | null = null;
       if (current) {
         try {
-          chart = await chartService.getChart(current.id);
+          chart = await treeDataSource.getChart(current.id);
         } catch {
           chart = null;
         }
       }
       if (!chart && charts.length > 0) {
-        chart = await chartService.getChart(charts[0].id);
+        chart = await treeDataSource.getChart(charts[0].id);
       }
       setState((s) => ({ ...s, charts, chart, loading: false, error: null }));
     } catch {
@@ -220,17 +220,17 @@ export function TreeChartProvider({ children }: { children: ReactNode }) {
   }, [reload]);
 
   const selectChart = useCallback(async (chartId: string) => {
-    const chart = await chartService.getChart(chartId);
+    const chart = await treeDataSource.getChart(chartId);
     setState((s) => ({ ...s, chart, error: null }));
   }, []);
 
   const createChart = useCallback(async (name: string, mode: ChartMode) => {
-    const chart = await chartService.createChart({ name, mode });
+    const chart = await treeDataSource.createChart({ name, mode });
     setState((s) => ({ ...s, charts: [toSummary(chart), ...s.charts], chart }));
   }, []);
 
   const renameChart = useCallback(async (chartId: string, name: string) => {
-    const updated = await chartService.updateChart(chartId, { name });
+    const updated = await treeDataSource.updateChart(chartId, { name });
     setState((s) => ({
       ...s,
       charts: s.charts.map((c) =>
@@ -245,7 +245,7 @@ export function TreeChartProvider({ children }: { children: ReactNode }) {
 
   const setChartMode = useCallback(async (mode: ChartMode) => {
     const chart = requireChart();
-    const updated = await chartService.updateChart(chart.id, { mode });
+    const updated = await treeDataSource.updateChart(chart.id, { mode });
     setState((s) => ({
       ...s,
       charts: s.charts.map((c) =>
@@ -261,13 +261,13 @@ export function TreeChartProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const deleteChart = useCallback(async (chartId: string) => {
-    await chartService.deleteChart(chartId);
+    await treeDataSource.deleteChart(chartId);
     const current = stateRef.current;
     const remaining = current.charts.filter((c) => c.id !== chartId);
     const wasActive = current.chart?.id === chartId;
     let nextChart: Chart | null = current.chart && !wasActive ? current.chart : null;
     if (wasActive && remaining.length > 0) {
-      nextChart = await chartService.getChart(remaining[0].id);
+      nextChart = await treeDataSource.getChart(remaining[0].id);
     }
     setState((s) => ({ ...s, charts: remaining, chart: nextChart }));
   }, []);
@@ -276,7 +276,7 @@ export function TreeChartProvider({ children }: { children: ReactNode }) {
     async (input: TreeNodeInput): Promise<TreeNode> => {
       const chart = requireChart();
       const position = getInsertPosition(chart.nodes, input.parentId);
-      const created = await chartService.createNode(chart.id, {
+      const created = await treeDataSource.createNode(chart.id, {
         ...input,
         positionX: input.positionX ?? position.x,
         positionY: input.positionY ?? position.y,
@@ -301,7 +301,7 @@ export function TreeChartProvider({ children }: { children: ReactNode }) {
   const updateNode = useCallback(
     async (id: string, patch: TreeNodePatch) => {
       const chart = requireChart();
-      const updated = await chartService.updateNode(chart.id, id, patch);
+      const updated = await treeDataSource.updateNode(chart.id, id, patch);
       setState((s) =>
         s.chart
           ? { ...s, chart: { ...s.chart, nodes: replaceNode(s.chart.nodes, updated) } }
@@ -314,7 +314,7 @@ export function TreeChartProvider({ children }: { children: ReactNode }) {
   const setPosition = useCallback(
     async (id: string, x: number, y: number) => {
       const chart = requireChart();
-      const updated = await chartService.setPosition(chart.id, id, x, y);
+      const updated = await treeDataSource.setPosition(chart.id, id, x, y);
       setState((s) =>
         s.chart
           ? { ...s, chart: { ...s.chart, nodes: replaceNode(s.chart.nodes, updated) } }
@@ -327,7 +327,7 @@ export function TreeChartProvider({ children }: { children: ReactNode }) {
   const setParent = useCallback(
     async (id: string, parentId: string | null) => {
       const chart = requireChart();
-      const updated = await chartService.setParent(chart.id, id, parentId);
+      const updated = await treeDataSource.setParent(chart.id, id, parentId);
       setState((s) =>
         s.chart
           ? { ...s, chart: { ...s.chart, nodes: replaceNode(s.chart.nodes, updated) } }
@@ -340,7 +340,7 @@ export function TreeChartProvider({ children }: { children: ReactNode }) {
   const setPartner = useCallback(
     async (id: string, partnerId: string | null) => {
       const chart = requireChart();
-      const updated = await chartService.setPartner(chart.id, id, partnerId);
+      const updated = await treeDataSource.setPartner(chart.id, id, partnerId);
       setState((s) => {
         if (!s.chart) return s;
         let nodes = replaceNode(s.chart.nodes, updated);
@@ -360,7 +360,7 @@ export function TreeChartProvider({ children }: { children: ReactNode }) {
   const uploadPhoto = useCallback(
     async (id: string, file: File) => {
       const chart = requireChart();
-      const updated = await chartService.uploadNodePhoto(chart.id, id, file);
+      const updated = await treeDataSource.uploadNodePhoto(chart.id, id, file);
       setState((s) =>
         s.chart
           ? { ...s, chart: { ...s.chart, nodes: replaceNode(s.chart.nodes, updated) } }
@@ -373,7 +373,7 @@ export function TreeChartProvider({ children }: { children: ReactNode }) {
   const removePhoto = useCallback(
     async (id: string) => {
       const chart = requireChart();
-      const updated = await chartService.deleteNodePhoto(chart.id, id);
+      const updated = await treeDataSource.deleteNodePhoto(chart.id, id);
       setState((s) =>
         s.chart
           ? { ...s, chart: { ...s.chart, nodes: replaceNode(s.chart.nodes, updated) } }
@@ -386,7 +386,7 @@ export function TreeChartProvider({ children }: { children: ReactNode }) {
   const deleteNode = useCallback(
     async (id: string) => {
       const chart = requireChart();
-      await chartService.deleteNode(chart.id, id);
+      await treeDataSource.deleteNode(chart.id, id);
       setState((s) => {
         if (!s.chart) return s;
         const nodes = s.chart.nodes
@@ -412,7 +412,7 @@ export function TreeChartProvider({ children }: { children: ReactNode }) {
     });
     setState((s) => (s.chart ? { ...s, chart: { ...s.chart, nodes: updated } } : s));
     const results = await Promise.allSettled(
-      updated.map((n) => chartService.setPosition(chart.id, n.id, n.positionX, n.positionY)),
+      updated.map((n) => treeDataSource.setPosition(chart.id, n.id, n.positionX, n.positionY)),
     );
     if (results.some((r) => r.status === 'rejected')) {
       throw new Error('Failed to save layout');
@@ -422,14 +422,14 @@ export function TreeChartProvider({ children }: { children: ReactNode }) {
   const reset = useCallback(async () => {
     // Reset clears the CURRENT chart's nodes — it never creates a new chart.
     const chart = requireChart();
-    await chartService.clearChartNodes(chart.id);
+    await treeDataSource.clearChartNodes(chart.id);
     setState((s) => (s.chart ? { ...s, chart: { ...s.chart, nodes: [] } } : s));
   }, [requireChart]);
 
   const deleteNodes = useCallback(
     async (nodeIds: string[]) => {
       const chart = requireChart();
-      await chartService.deleteNodes(chart.id, nodeIds);
+      await treeDataSource.deleteNodes(chart.id, nodeIds);
       const idSet = new Set(nodeIds);
       setState((s) => {
         if (!s.chart) return s;
