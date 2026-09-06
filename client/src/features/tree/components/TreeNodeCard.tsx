@@ -177,8 +177,8 @@ export function TreeNodeCard({
               ) : (
                 <p
                   onDoubleClick={selectionMode ? undefined : startRename}
-                  title={selectionMode ? undefined : 'Double-click to rename'}
-                  className="truncate text-[15px] font-bold leading-snug"
+                  title={node.name}
+                  className="line-clamp-2 min-w-0 break-words text-[15px] font-bold leading-snug"
                   style={{ color: theme.textPrimary }}
                 >
                   {node.name}

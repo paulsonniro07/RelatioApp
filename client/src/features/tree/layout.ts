@@ -1,7 +1,8 @@
 import type { TreeNode } from './types';
 
 export const NODE_WIDTH = 180;
-export const NODE_HEIGHT = 96;
+/** Card height — sized to fit a two-line name plus role and note lines. */
+export const NODE_HEIGHT = 112;
 /** Row-to-row distance between generations (generous breathing room). */
 export const VERTICAL_GAP = 200;
 /** Gap between sibling cards on the same row (1.7x the previous 36px). */
