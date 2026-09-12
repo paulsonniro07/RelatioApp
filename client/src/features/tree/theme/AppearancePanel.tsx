@@ -1,6 +1,7 @@
 import { useEffect, useRef } from 'react';
 
 import { CheckIcon } from '@/components/ui/icons';
+import { useBodyScrollLock } from '@/hooks/useBodyScrollLock';
 import { useTheme } from '@/features/tree/theme/ThemeProvider';
 import type { ChartTheme, RelationshipType, ThemeId } from '@/features/tree/theme/types';
 
@@ -80,17 +81,16 @@ export function AppearancePanel({ open, onClose }: AppearancePanelProps) {
   const { theme: activeTheme, themeList, setThemeId } = useTheme();
   const panelRef = useRef<HTMLDivElement>(null);
 
-  // Lock body scroll + allow Escape to close while the panel is open.
+  useBodyScrollLock(open);
+
+  // Allow Escape to close while the panel is open.
   useEffect(() => {
     if (!open) return;
-    const previousOverflow = document.body.style.overflow;
-    document.body.style.overflow = 'hidden';
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key === 'Escape') onClose();
     };
     document.addEventListener('keydown', onKeyDown);
     return () => {
-      document.body.style.overflow = previousOverflow;
       document.removeEventListener('keydown', onKeyDown);
     };
   }, [open, onClose]);

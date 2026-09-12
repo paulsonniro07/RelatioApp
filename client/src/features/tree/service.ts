@@ -1,26 +1,42 @@
 import api from '@/lib/api';
 import type { PaginatedList } from '@/types/common';
-import type { Chart, ChartMode, ChartSummary, TreeNode, TreeNodeInput } from './types';
+import type {
+  Chart,
+  ChartSummary,
+  ChartType,
+  ChartTypeInput,
+  ChartTypeSummary,
+  TreeNode,
+  TreeNodeInput,
+} from './types';
 
 export interface CreateChartInput {
   name: string;
-  mode: ChartMode;
+  chartTypeId: string;
   /** Marks an auto-seeded reference chart so it can be re-seeded if deleted. */
   isExample?: boolean;
 }
 
 export type TreeNodePatch = Partial<
-  Pick<TreeNode, 'name' | 'role' | 'level' | 'notes' | 'photoUrl'>
+  Pick<TreeNode, 'name' | 'role' | 'level' | 'notes' | 'photoUrl' | 'relationshipTypeId'>
 >;
 
 function toSummary(chart: Chart): ChartSummary {
   return {
     id: chart.id,
     name: chart.name,
-    mode: chart.mode,
+    chartTypeId: chart.chartTypeId,
     isExample: chart.isExample,
     createdAt: chart.createdAt,
     updatedAt: chart.updatedAt,
+  };
+}
+
+function toChartTypeSummary(chartType: ChartType): ChartTypeSummary {
+  return {
+    id: chartType.id,
+    name: chartType.name,
+    isExample: chartType.isExample,
   };
 }
 
@@ -44,7 +60,7 @@ export const chartService = {
 
   updateChart: async (
     chartId: string,
-    input: { name?: string; mode?: ChartMode },
+    input: { name?: string; chartTypeId?: string },
   ): Promise<Chart> => {
     const response = await api.put<Chart>(`/charts/${chartId}`, input);
     return response.data;
@@ -52,6 +68,35 @@ export const chartService = {
 
   deleteChart: async (chartId: string): Promise<void> => {
     await api.delete(`/charts/${chartId}`);
+  },
+
+  getChartTypes: async (): Promise<ChartType[]> => {
+    const response = await api.get<PaginatedList<ChartType>>('/chart-types', {
+      params: { pageNumber: 1, pageSize: 100 },
+    });
+    return response.data.data;
+  },
+
+  getChartType: async (chartTypeId: string): Promise<ChartType> => {
+    const response = await api.get<ChartType>(`/chart-types/${chartTypeId}`);
+    return response.data;
+  },
+
+  createChartType: async (input: ChartTypeInput): Promise<ChartType> => {
+    const response = await api.post<ChartType>('/chart-types', input);
+    return response.data;
+  },
+
+  updateChartType: async (
+    chartTypeId: string,
+    input: ChartTypeInput,
+  ): Promise<ChartType> => {
+    const response = await api.put<ChartType>(`/chart-types/${chartTypeId}`, input);
+    return response.data;
+  },
+
+  deleteChartType: async (chartTypeId: string): Promise<void> => {
+    await api.delete(`/chart-types/${chartTypeId}`);
   },
 
   createNode: async (chartId: string, input: TreeNodeInput): Promise<TreeNode> => {
@@ -130,4 +175,5 @@ export const chartService = {
   },
 
   toSummary,
+  toChartTypeSummary,
 };

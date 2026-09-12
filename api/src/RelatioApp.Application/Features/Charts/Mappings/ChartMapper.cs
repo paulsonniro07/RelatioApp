@@ -1,6 +1,5 @@
 using RelatioApp.Application.DTOs.Charts;
 using RelatioApp.Domain.Entities;
-using RelatioApp.Domain.Enums;
 
 namespace RelatioApp.Application.Features.Charts.Mappings;
 
@@ -15,6 +14,7 @@ public static class ChartMapper
         PartnerId = node.PartnerId,
         Level = node.Level,
         Role = node.RoleOrRelationship,
+        RelationshipTypeId = node.RelationshipTypeId,
         Notes = node.Notes,
         PhotoUrl = node.PhotoUrl,
         PositionX = node.PositionX,
@@ -27,7 +27,7 @@ public static class ChartMapper
     {
         Id = chart.Id,
         Name = chart.Name,
-        Mode = ModeToString(chart.Mode),
+        ChartTypeId = chart.ChartTypeId,
         IsExample = chart.IsExample,
         CreatedAt = chart.CreatedAt,
         UpdatedAt = chart.UpdatedAt,
@@ -38,14 +38,30 @@ public static class ChartMapper
     {
         Id = chart.Id,
         Name = chart.Name,
-        Mode = ModeToString(chart.Mode),
+        ChartTypeId = chart.ChartTypeId,
         IsExample = chart.IsExample,
         CreatedAt = chart.CreatedAt,
         UpdatedAt = chart.UpdatedAt,
     };
 
-    public static string ModeToString(ChartMode mode) => mode.ToString().ToLowerInvariant();
+    public static RelationshipTypeDefinitionDto ToDto(RelationshipTypeDefinition definition) => new()
+    {
+        Id = definition.TypeId,
+        Label = definition.Label,
+        ForwardLabel = definition.ForwardLabel,
+        BackwardLabel = definition.BackwardLabel,
+        Icon = definition.Icon,
+        Directional = definition.Directional,
+        Link = definition.Link,
+    };
 
-    public static bool TryParseMode(string? mode, out ChartMode result)
-        => Enum.TryParse(mode, ignoreCase: true, out result);
+    public static ChartTypeDto ToDto(ChartType chartType) => new()
+    {
+        Id = chartType.Id,
+        Name = chartType.Name,
+        IsExample = chartType.IsExample,
+        CreatedAt = chartType.CreatedAt,
+        UpdatedAt = chartType.UpdatedAt,
+        Relationships = chartType.Relationships.Select(ToDto).ToList(),
+    };
 }

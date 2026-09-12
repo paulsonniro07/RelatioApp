@@ -8,20 +8,29 @@ import {
   type ReactNode,
 } from 'react';
 
+import { STARTER_CHART_TYPES, inferRelationshipId } from './chartTypes';
 import { computeAutoLayout, computeDepths } from './layout';
 import { createSampleChart } from './sampleData';
 import { treeDataSource } from './storage';
-import type { Chart, ChartMode, ChartSummary, TreeNode, TreeNodeInput } from './types';
+import type {
+  Chart,
+  ChartSummary,
+  ChartType,
+  ChartTypeInput,
+  TreeNode,
+  TreeNodeInput,
+} from './types';
 
 export interface TreeChartState {
   charts: ChartSummary[];
+  chartTypes: ChartType[];
   chart: Chart | null;
   loading: boolean;
   error: string | null;
 }
 
 export type TreeNodePatch = Partial<
-  Pick<TreeNode, 'name' | 'level' | 'role' | 'notes' | 'photoUrl'>
+  Pick<TreeNode, 'name' | 'level' | 'role' | 'notes' | 'photoUrl' | 'relationshipTypeId'>
 >;
 
 /** Prevents cycles: returns true if setting node id's parent to parentId would loop. */
@@ -47,7 +56,7 @@ function toSummary(chart: Chart): ChartSummary {
   return {
     id: chart.id,
     name: chart.name,
-    mode: chart.mode,
+    chartTypeId: chart.chartTypeId,
     isExample: chart.isExample,
     createdAt: chart.createdAt,
     updatedAt: chart.updatedAt,
@@ -81,12 +90,27 @@ function uniqueName(charts: ChartSummary[], base: string): string {
 }
 
 /**
+ * Loads the workspace chart types, seeding the starter presets on first run so
+ * there is always at least one usable vocabulary.
+ */
+async function ensureChartTypes(): Promise<ChartType[]> {
+  const existing = await treeDataSource.getChartTypes();
+  if (existing.length > 0) return existing;
+
+  const created: ChartType[] = [];
+  for (const preset of STARTER_CHART_TYPES) {
+    created.push(await treeDataSource.createChartType(preset));
+  }
+  return created;
+}
+
+/**
  * Creates one reference (example) chart — chart + nodes — and returns the full
  * chart. Node ids are mapped so parent/partner links reference the real ids.
- * `reserveNames` is the list of charts that must not collide on name.
  */
 async function createSampleChartInDb(
   kind: 'org' | 'family',
+  chartType: ChartType,
   isExample: boolean,
   reserveNames: ChartSummary[],
 ): Promise<Chart> {
@@ -99,7 +123,7 @@ async function createSampleChartInDb(
 
   const chart = await treeDataSource.createChart({
     name: uniqueName(reserveNames, sample.name),
-    mode: sample.mode,
+    chartTypeId: chartType.id,
     isExample,
   });
 
@@ -112,6 +136,7 @@ async function createSampleChartInDb(
       partnerId: sampleNode.partnerId ? (idMap.get(sampleNode.partnerId) ?? null) : null,
       level: sampleNode.level,
       role: sampleNode.role,
+      relationshipTypeId: inferRelationshipId(chartType, sampleNode.role),
       notes: sampleNode.notes,
       photoUrl: sampleNode.photoUrl,
       positionX: position?.x ?? 0,
@@ -120,25 +145,33 @@ async function createSampleChartInDb(
     idMap.set(sampleNode.id, created.id);
   }
 
-  const full = await treeDataSource.getChart(chart.id);
-  return full;
+  return treeDataSource.getChart(chart.id);
 }
 
 /**
  * Keeps the reference examples available: re-creates any missing example chart
- * (IsExample marker per mode) so the app always has an Org + Family example to
- * view. User charts are never touched. Failures are swallowed — a seeding hiccup
- * must never block the app from loading.
+ * (IsExample marker per kind) so the app always has examples to view. User
+ * charts are never touched. Failures are swallowed.
  */
-async function seedExamples(charts: ChartSummary[]): Promise<ChartSummary[]> {
+async function seedExamples(
+  charts: ChartSummary[],
+  chartTypes: ChartType[],
+): Promise<ChartSummary[]> {
   const created: ChartSummary[] = [];
   try {
     for (const kind of ['org', 'family'] as const) {
+      const wantedName = kind === 'family' ? 'Family' : 'Organization';
+      const chartType =
+        chartTypes.find((ct) => ct.name.toLowerCase() === wantedName.toLowerCase()) ??
+        chartTypes[0];
+      if (!chartType) continue;
+
       const hasExample = [...charts, ...created].some(
-        (c) => c.isExample && c.mode === kind,
+        (c) => c.isExample && c.chartTypeId === chartType.id,
       );
       if (hasExample) continue;
-      const full = await createSampleChartInDb(kind, true, [...charts, ...created]);
+
+      const full = await createSampleChartInDb(kind, chartType, true, [...charts, ...created]);
       created.push(toSummary(full));
     }
   } catch {
@@ -148,12 +181,17 @@ async function seedExamples(charts: ChartSummary[]): Promise<ChartSummary[]> {
 }
 
 export interface TreeChartContextValue extends TreeChartState {
+  /** Chart type driving the active chart's relationship vocabulary. */
+  activeChartType: ChartType | null;
   reload: () => Promise<void>;
   selectChart: (chartId: string) => Promise<void>;
-  createChart: (name: string, mode: ChartMode) => Promise<void>;
+  createChart: (name: string, chartTypeId: string) => Promise<void>;
   renameChart: (chartId: string, name: string) => Promise<void>;
-  setChartMode: (mode: ChartMode) => Promise<void>;
+  setChartType: (chartTypeId: string) => Promise<void>;
   deleteChart: (chartId: string) => Promise<void>;
+  createChartType: (input: ChartTypeInput) => Promise<ChartType>;
+  updateChartType: (chartTypeId: string, input: ChartTypeInput) => Promise<ChartType>;
+  deleteChartType: (chartTypeId: string) => Promise<void>;
   addNode: (input: TreeNodeInput) => Promise<TreeNode>;
   updateNode: (id: string, patch: TreeNodePatch) => Promise<void>;
   setPosition: (id: string, x: number, y: number) => Promise<void>;
@@ -172,6 +210,7 @@ export const TreeChartContext = createContext<TreeChartContextValue | null>(null
 export function TreeChartProvider({ children }: { children: ReactNode }) {
   const [state, setState] = useState<TreeChartState>({
     charts: [],
+    chartTypes: [],
     chart: null,
     loading: true,
     error: null,
@@ -191,8 +230,8 @@ export function TreeChartProvider({ children }: { children: ReactNode }) {
   const reload = useCallback(async () => {
     setState((s) => ({ ...s, loading: true, error: null }));
     try {
-      // Ensure the reference examples exist before we pick the chart to show.
-      const charts = await seedExamples(await treeDataSource.getCharts());
+      const chartTypes = await ensureChartTypes();
+      const charts = await seedExamples(await treeDataSource.getCharts(), chartTypes);
       const current = stateRef.current.chart;
       let chart: Chart | null = null;
       if (current) {
@@ -205,7 +244,7 @@ export function TreeChartProvider({ children }: { children: ReactNode }) {
       if (!chart && charts.length > 0) {
         chart = await treeDataSource.getChart(charts[0].id);
       }
-      setState((s) => ({ ...s, charts, chart, loading: false, error: null }));
+      setState((s) => ({ ...s, charts, chartTypes, chart, loading: false, error: null }));
     } catch {
       setState((s) => ({
         ...s,
@@ -224,8 +263,8 @@ export function TreeChartProvider({ children }: { children: ReactNode }) {
     setState((s) => ({ ...s, chart, error: null }));
   }, []);
 
-  const createChart = useCallback(async (name: string, mode: ChartMode) => {
-    const chart = await treeDataSource.createChart({ name, mode });
+  const createChart = useCallback(async (name: string, chartTypeId: string) => {
+    const chart = await treeDataSource.createChart({ name, chartTypeId });
     setState((s) => ({ ...s, charts: [toSummary(chart), ...s.charts], chart }));
   }, []);
 
@@ -243,20 +282,63 @@ export function TreeChartProvider({ children }: { children: ReactNode }) {
     }));
   }, []);
 
-  const setChartMode = useCallback(async (mode: ChartMode) => {
+  const setChartType = useCallback(async (chartTypeId: string) => {
     const chart = requireChart();
-    const updated = await treeDataSource.updateChart(chart.id, { mode });
+    const updated = await treeDataSource.updateChart(chart.id, { chartTypeId });
     setState((s) => ({
       ...s,
       charts: s.charts.map((c) =>
         c.id === chart.id
-          ? { ...c, mode: updated.mode, updatedAt: updated.updatedAt }
+          ? { ...c, chartTypeId: updated.chartTypeId, updatedAt: updated.updatedAt }
           : c,
       ),
       chart:
         s.chart?.id === chart.id
-          ? { ...s.chart, mode: updated.mode, updatedAt: updated.updatedAt }
+          ? { ...s.chart, chartTypeId: updated.chartTypeId, updatedAt: updated.updatedAt }
           : s.chart,
+    }));
+  }, [requireChart]);
+
+  const createChartType = useCallback(async (input: ChartTypeInput) => {
+    const created = await treeDataSource.createChartType(input);
+    setState((s) => ({ ...s, chartTypes: [...s.chartTypes, created] }));
+    return created;
+  }, []);
+
+  const updateChartType = useCallback(
+    async (chartTypeId: string, input: ChartTypeInput) => {
+      const updated = await treeDataSource.updateChartType(chartTypeId, input);
+      setState((s) => ({
+        ...s,
+        chartTypes: s.chartTypes.map((ct) => (ct.id === chartTypeId ? updated : ct)),
+      }));
+      return updated;
+    },
+    [],
+  );
+
+  const deleteChartType = useCallback(async (chartTypeId: string) => {
+    await treeDataSource.deleteChartType(chartTypeId);
+    const current = stateRef.current;
+    const remaining = current.chartTypes.filter((ct) => ct.id !== chartTypeId);
+    const fallback = remaining[0]?.id;
+    const repointActive =
+      current.chart?.chartTypeId === chartTypeId && fallback !== undefined;
+    if (repointActive && fallback) {
+      await treeDataSource.updateChart(current.chart!.id, { chartTypeId: fallback });
+    }
+    setState((s) => ({
+      ...s,
+      chartTypes: remaining,
+      // Re-point the active chart at a surviving type so it keeps working;
+      // chart data itself is never touched.
+      chart:
+        repointActive && fallback && s.chart
+          ? { ...s.chart, chartTypeId: fallback }
+          : s.chart,
+      charts: s.charts.map((c) =>
+        c.chartTypeId === chartTypeId && fallback ? { ...c, chartTypeId: fallback } : c,
+      ),
     }));
   }, []);
 
@@ -446,15 +528,28 @@ export function TreeChartProvider({ children }: { children: ReactNode }) {
     [requireChart],
   );
 
+  const activeChartType = useMemo<ChartType | null>(() => {
+    if (!state.chart) return null;
+    return (
+      state.chartTypes.find((ct) => ct.id === state.chart?.chartTypeId) ??
+      state.chartTypes[0] ??
+      null
+    );
+  }, [state.chart, state.chartTypes]);
+
   const value = useMemo<TreeChartContextValue>(
     () => ({
       ...state,
+      activeChartType,
       reload,
       selectChart,
       createChart,
       renameChart,
-      setChartMode,
+      setChartType,
       deleteChart,
+      createChartType,
+      updateChartType,
+      deleteChartType,
       addNode,
       updateNode,
       setPosition,
@@ -469,12 +564,16 @@ export function TreeChartProvider({ children }: { children: ReactNode }) {
     }),
     [
       state,
+      activeChartType,
       reload,
       selectChart,
       createChart,
       renameChart,
-      setChartMode,
+      setChartType,
       deleteChart,
+      createChartType,
+      updateChartType,
+      deleteChartType,
       addNode,
       updateNode,
       setPosition,
@@ -491,5 +590,3 @@ export function TreeChartProvider({ children }: { children: ReactNode }) {
 
   return <TreeChartContext.Provider value={value}>{children}</TreeChartContext.Provider>;
 }
-
-

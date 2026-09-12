@@ -12,6 +12,11 @@ public class AppDbContext : DbContext
 
     public DbSet<TreeNode> TreeNodes => Set<TreeNode>();
 
+    public DbSet<ChartType> ChartTypes => Set<ChartType>();
+
+    public DbSet<RelationshipTypeDefinition> RelationshipTypeDefinitions
+        => Set<RelationshipTypeDefinition>();
+
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         base.OnModelCreating(modelBuilder);

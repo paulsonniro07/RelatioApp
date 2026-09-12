@@ -9,6 +9,7 @@ import {
 import { toPng } from 'html-to-image';
 
 import { TreeNodeCard } from '@/features/tree/components/TreeNodeCard';
+import { resolvePartnerRelationship } from '@/features/tree/chartTypes';
 import { computeEdges, parentEdgePath, partnerEdgePath } from '@/features/tree/edges';
 import {
   computeBounds,
@@ -18,7 +19,7 @@ import {
 import { resolvePersona } from '@/features/tree/theme/persona';
 import { useTheme } from '@/features/tree/theme/ThemeProvider';
 import type { RelationshipType } from '@/features/tree/theme/types';
-import type { Chart } from '@/features/tree/types';
+import type { Chart, ChartType } from '@/features/tree/types';
 
 /** Empty margin around the tree inside the exported frame. */
 const TREE_PAD = 40;
@@ -56,17 +57,21 @@ function downloadPng(dataUrl: string, filename: string) {
 
 interface ChartExportStageProps {
   chart: Chart;
+  chartType: ChartType;
 }
 
 export const ChartExportStage = forwardRef<ChartExportHandle, ChartExportStageProps>(
-  function ChartExportStage({ chart }, ref) {
+  function ChartExportStage({ chart, chartType }, ref) {
     const { theme } = useTheme();
 
     const rawTreeRef = useRef<HTMLDivElement>(null);
     const framedWrapRef = useRef<HTMLDivElement>(null);
 
     const nodes = chart.nodes;
-    const mode = chart.mode;
+
+    const childLabel =
+      chartType.relationships.find((def) => def.directional && def.link === 'parent')
+        ?.backwardLabel ?? 'Child';
 
     const depths = useMemo(() => computeDepths(nodes), [nodes]);
     const bounds = useMemo(() => computeBounds(nodes), [nodes]);
@@ -84,13 +89,13 @@ export const ChartExportStage = forwardRef<ChartExportHandle, ChartExportStagePr
       for (const n of nodes) {
         map.set(
           n.id,
-          resolvePersona(n, mode, depths.get(n.id) ?? 0, (childCount.get(n.id) ?? 0) > 0),
+          resolvePersona(n, chartType, depths.get(n.id) ?? 0, (childCount.get(n.id) ?? 0) > 0),
         );
       }
       return map;
-    }, [nodes, mode, depths, childCount]);
+    }, [nodes, chartType, depths, childCount]);
 
-    const edges = useMemo(() => computeEdges(nodes, mode), [nodes, mode]);
+    const edges = useMemo(() => computeEdges(nodes), [nodes]);
     const byId = useMemo(() => new Map(nodes.map((n) => [n.id, n])), [nodes]);
 
     /** Tight bounds + 40px padding — NOT the full pan/zoom viewport. */
@@ -119,6 +124,8 @@ export const ChartExportStage = forwardRef<ChartExportHandle, ChartExportStagePr
             if (edge.kind === 'partner') {
               const { path, midX, midY } = partnerEdgePath(from, to, offsetX, offsetY);
               const spouse = theme.spouseConnectorColor ?? theme.connectorColor;
+              const partnerDef = resolvePartnerRelationship(chartType, from, to);
+              const showHeart = partnerDef?.icon === 'heart';
               return (
                 <g key={`${edge.fromId}->${edge.toId}`}>
                   <path
@@ -128,12 +135,14 @@ export const ChartExportStage = forwardRef<ChartExportHandle, ChartExportStagePr
                     strokeWidth={theme.connectorWidth}
                     strokeDasharray="5 4"
                   />
-                  <g
-                    transform={`translate(${midX} ${midY}) scale(0.55) translate(-12 -12)`}
-                    pointerEvents="none"
-                  >
-                    <path d={HEART_PATH} fill={spouse} />
-                  </g>
+                  {showHeart && (
+                    <g
+                      transform={`translate(${midX} ${midY}) scale(0.55) translate(-12 -12)`}
+                      pointerEvents="none"
+                    >
+                      <path d={HEART_PATH} fill={spouse} />
+                    </g>
+                  )}
                   <text
                     x={midX}
                     y={midY - NODE_HEIGHT / 2 - 8}
@@ -141,7 +150,7 @@ export const ChartExportStage = forwardRef<ChartExportHandle, ChartExportStagePr
                     fontSize={10}
                     fill={theme.textSecondary}
                   >
-                    Spouse
+                    {partnerDef?.label ?? 'Partner'}
                   </text>
                 </g>
               );
@@ -156,11 +165,9 @@ export const ChartExportStage = forwardRef<ChartExportHandle, ChartExportStagePr
                   stroke={theme.connectorColor}
                   strokeWidth={theme.connectorWidth}
                 />
-                {mode === 'family' && (
-                  <text x={midX} y={midY - 12} textAnchor="middle" fontSize={10} fill={theme.textSecondary}>
-                    Children
-                  </text>
-                )}
+                <text x={midX} y={midY - 12} textAnchor="middle" fontSize={10} fill={theme.textSecondary}>
+                  {childLabel}
+                </text>
               </g>
             );
           })}
@@ -181,7 +188,6 @@ export const ChartExportStage = forwardRef<ChartExportHandle, ChartExportStagePr
           >
             <TreeNodeCard
               node={node}
-              mode={mode}
               depth={depths.get(node.id) ?? 0}
               persona={personas.get(node.id) ?? 'child'}
             />

@@ -5,6 +5,7 @@ import { EmptyState } from '@/components/ui/EmptyState';
 import { useToast } from '@/components/ui/Toast';
 import { findDropTarget, type DropTargetInfo } from '@/features/tree/drag';
 import { computeEdges, parentEdgePath, partnerEdgePath } from '@/features/tree/edges';
+import { chartTypeAllowsPartners, resolvePartnerRelationship } from '@/features/tree/chartTypes';
 import { computeBounds, computeDepths, LAYOUT_MARGIN, NODE_HEIGHT, NODE_WIDTH } from '@/features/tree/layout';
 import { wouldCreateCycle } from '@/features/tree/store';
 import { usePanZoom } from '@/hooks/usePanZoom';
@@ -12,7 +13,7 @@ import { useTreeChart } from '@/hooks/useTreeChart';
 import { useTheme } from '@/features/tree/theme/ThemeProvider';
 import { resolvePersona } from '@/features/tree/theme/persona';
 import type { RelationshipType } from '@/features/tree/theme/types';
-import type { ChartMode, TreeNode } from '@/features/tree/types';
+import type { ChartType, TreeNode } from '@/features/tree/types';
 
 import { CanvasControls } from './CanvasControls';
 import { CanvasDecorations } from './CanvasDecorations';
@@ -43,7 +44,7 @@ type DragState =
 
 interface TreeCanvasProps {
   nodes: TreeNode[];
-  mode: ChartMode;
+  chartType: ChartType;
   selectedId: string | null;
   selectionMode: boolean;
   multiSelectedIds: Set<string>;
@@ -57,7 +58,7 @@ interface TreeCanvasProps {
 
 export function TreeCanvas({
   nodes,
-  mode,
+  chartType,
   selectedId,
   selectionMode,
   multiSelectedIds,
@@ -82,8 +83,15 @@ export function TreeCanvas({
 
   const { theme } = useTheme();
 
+  const allowPartner = chartTypeAllowsPartners(chartType);
+  const partnerLabel =
+    chartType.relationships.find((def) => def.link === 'partner')?.label ?? 'Partner';
+  const childLabel =
+    chartType.relationships.find((def) => def.directional && def.link === 'parent')
+      ?.backwardLabel ?? 'Child';
+
   const bounds = useMemo(() => computeBounds(nodes), [nodes]);
-  const edges = useMemo(() => computeEdges(nodes, mode), [nodes, mode]);
+  const edges = useMemo(() => computeEdges(nodes), [nodes]);
   const byId = useMemo(() => new Map(nodes.map((n) => [n.id, n])), [nodes]);
   const depths = useMemo(() => computeDepths(nodes), [nodes]);
 
@@ -100,11 +108,11 @@ export function TreeCanvas({
     for (const n of nodes) {
       map.set(
         n.id,
-        resolvePersona(n, mode, depths.get(n.id) ?? 0, (childCount.get(n.id) ?? 0) > 0),
+        resolvePersona(n, chartType, depths.get(n.id) ?? 0, (childCount.get(n.id) ?? 0) > 0),
       );
     }
     return map;
-  }, [nodes, mode, depths, childCount]);
+  }, [nodes, chartType, depths, childCount]);
 
   /** Nodes whose incident connectors should thicken/darken (hover/drag/select). */
   const emphasisIds = useMemo(() => {
@@ -183,7 +191,7 @@ export function TreeCanvas({
     const nextPos = { x: drag.nodeX + dx, y: drag.nodeY + dy };
     setDrag({ ...drag, moved: true });
     setGhostPos(nextPos);
-    setDropTarget(findDropTarget(nodes, nextPos, mode, drag.nodeId));
+    setDropTarget(findDropTarget(nodes, nextPos, allowPartner, drag.nodeId));
   };
 
   const handleNodePointerUp = async () => {
@@ -201,7 +209,7 @@ export function TreeCanvas({
         } else if (!wouldCreateCycle(nodes, drag.nodeId, dropTarget.nodeId)) {
           try {
             await setParent(drag.nodeId, dropTarget.nodeId);
-            toastSuccess(mode === 'org' ? 'Reparented' : 'Relationship updated');
+            toastSuccess('Relationship updated');
           } catch {
             toastError('Failed to update relationship');
           }
@@ -265,7 +273,7 @@ export function TreeCanvas({
       findDropTarget(
         nodes,
         pos,
-        mode,
+        allowPartner,
         drag.end === 'parent' ? drag.toId : drag.fromId,
         drag.end === 'parent' ? drag.fromId : drag.toId,
       ),
@@ -381,6 +389,9 @@ export function TreeCanvas({
             if (edge.kind === 'partner') {
               const { path, midX, midY } = partnerEdgePath(shownFrom, shownTo, offsetX, offsetY);
               const spouseColor = theme.spouseConnectorColor ?? theme.connectorColor;
+              const partnerDef = resolvePartnerRelationship(chartType, shownFrom, shownTo);
+              const partnerEdgeLabel = partnerDef?.label ?? 'Partner';
+              const showHeart = partnerDef?.icon === 'heart';
               return (
                 <g key={key}>
                   <path
@@ -391,16 +402,18 @@ export function TreeCanvas({
                     strokeDasharray="5 4"
                     opacity={isDraggedEdge ? 0.2 : 1}
                   />
-                  <g
-                    transform={`translate(${midX} ${midY}) scale(${edgeActive ? 0.7 : 0.55}) translate(-12 -12)`}
-                    pointerEvents="none"
-                    aria-hidden="true"
-                  >
-                    <path
-                      d="M21 8.25c0-2.485-2.099-4.5-4.688-4.5-1.935 0-3.597 1.126-4.312 2.733-.715-1.607-2.377-2.733-4.313-2.733C5.1 3.75 3 5.765 3 8.25c0 7.22 9 12 9 12s9-4.78 9-12z"
-                      fill={spouseColor}
-                    />
-                  </g>
+                  {showHeart && (
+                    <g
+                      transform={`translate(${midX} ${midY}) scale(${edgeActive ? 0.7 : 0.55}) translate(-12 -12)`}
+                      pointerEvents="none"
+                      aria-hidden="true"
+                    >
+                      <path
+                        d="M21 8.25c0-2.485-2.099-4.5-4.688-4.5-1.935 0-3.597 1.126-4.312 2.733-.715-1.607-2.377-2.733-4.313-2.733C5.1 3.75 3 5.765 3 8.25c0 7.22 9 12 9 12s9-4.78 9-12z"
+                        fill={spouseColor}
+                      />
+                    </g>
+                  )}
                   <text
                     x={midX}
                     y={midY - NODE_HEIGHT / 2 - 8}
@@ -409,7 +422,7 @@ export function TreeCanvas({
                     fill={theme.textSecondary}
                     style={{ pointerEvents: 'none', userSelect: 'none' }}
                   >
-                    Spouse
+                    {partnerEdgeLabel}
                   </text>
                 </g>
               );
@@ -427,7 +440,7 @@ export function TreeCanvas({
                   strokeWidth={edgeActive ? 2 : theme.connectorWidth}
                   opacity={isDraggedEdge ? 0.2 : 1}
                 />
-                {mode === 'family' && !isDraggedEdge && (
+                {!isDraggedEdge && (
                   <text
                     x={(shownFrom.positionX + shownTo.positionX) / 2 + offsetX}
                     y={(shownFrom.positionY + shownTo.positionY) / 2 + offsetY - 12}
@@ -436,7 +449,7 @@ export function TreeCanvas({
                     fill={theme.textSecondary}
                     style={{ pointerEvents: 'none', userSelect: 'none' }}
                   >
-                    Children
+                    {childLabel}
                   </text>
                 )}
                 {!isDraggedEdge && !selectionMode && (
@@ -531,10 +544,8 @@ export function TreeCanvas({
                 {isEdgeDrag
                   ? 'Reconnect edge here'
                   : dropTarget.zone === 'partner'
-                    ? `Link ${target.name} as partner`
-                    : mode === 'org'
-                      ? `Report to ${target.name}`
-                      : `Make ${target.name} the parent`}
+                    ? `Link ${target.name} (${partnerLabel})`
+                    : `Add as ${childLabel} of ${target.name}`}
               </div>
             </div>
           );
@@ -565,7 +576,6 @@ export function TreeCanvas({
             >
               <TreeNodeCard
                 node={node}
-                mode={mode}
                 depth={depths.get(node.id) ?? 0}
                 persona={personas.get(node.id) ?? 'child'}
                 selected={selectionMode ? isMultiSelected : node.id === selectedId}

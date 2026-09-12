@@ -1,4 +1,5 @@
-import type { ChartMode, TreeNode } from '../types';
+import { findRelationshipDef } from '../chartTypes';
+import type { ChartType, TreeNode } from '../types';
 import type { RelationshipType } from './types';
 
 const EXTENDED_RE = /sibling|brother|sister|aunt|uncle|cousin/i;
@@ -9,19 +10,22 @@ const PARENT_RE = /parent|father|mother|step/i;
 /**
  * Resolves which relationship-type tint a node should use.
  *
- * - Org mode is structural: nodes that have reports are "Manager", leaves are
- *   "Report / team member".
- * - Family mode prefers the explicit relationship role when present, then
- *   falls back to the generation tier (root = grandparent / senior, depth 1 =
- *   parent, deeper = child) for generic or empty roles.
+ * The node's chosen relationship type is authoritative (partner → spouse,
+ * shared-parent → sibling, hierarchy → parent/child). Legacy nodes without a
+ * relationship type fall back to their role text, then to generation depth.
  */
 export function resolvePersona(
   node: TreeNode,
-  mode: ChartMode,
+  chartType: ChartType,
   depth: number,
   hasChildren: boolean,
 ): RelationshipType {
-  if (mode === 'org') return hasChildren ? 'manager' : 'report';
+  const def = findRelationshipDef(chartType, node.relationshipTypeId);
+  if (def) {
+    if (def.link === 'partner') return 'spouse';
+    if (def.link === 'shared-parent') return 'sibling';
+    return hasChildren ? 'parent' : 'child';
+  }
 
   const role = node.role.trim().toLowerCase();
   if (role) {

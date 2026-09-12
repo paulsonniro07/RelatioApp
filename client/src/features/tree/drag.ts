@@ -1,5 +1,5 @@
 import { NODE_HEIGHT, NODE_WIDTH } from './layout';
-import type { ChartMode, TreeNode } from './types';
+import type { TreeNode } from './types';
 
 export const DROP_THRESHOLD = 150;
 
@@ -14,14 +14,14 @@ export interface DropTargetInfo {
  * Finds the node closest to `pointer` (canvas coordinates) within DROP_THRESHOLD.
  * - `child` zone: pointer is above the card's top edge → drop makes the dragged
  *   node a child of the target.
- * - `partner` zone (family mode only): pointer is beside the card → drop links
- *   the dragged node as a partner of the target.
+ * - `partner` zone (only when the chart type offers a partner/lateral link):
+ *   pointer is beside the card → drop links the dragged node laterally.
  * `sourceId` and `excludeId` (optional) are never returned as a target.
  */
 export function findDropTarget(
   nodes: TreeNode[],
   pointer: { x: number; y: number },
-  mode: ChartMode,
+  allowPartner: boolean,
   sourceId?: string,
   excludeId?: string,
 ): DropTargetInfo | null {
@@ -41,7 +41,7 @@ export function findDropTarget(
     if (dy < -NODE_HEIGHT * 0.3) {
       zone = 'child';
     } else if (
-      mode === 'family' &&
+      allowPartner &&
       Math.abs(dx) > NODE_WIDTH * 0.5 &&
       Math.abs(dy) < NODE_HEIGHT * 0.6
     ) {

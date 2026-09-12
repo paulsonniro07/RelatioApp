@@ -1,14 +1,16 @@
 using RelatioApp.Domain.Common;
-using RelatioApp.Domain.Enums;
 
 namespace RelatioApp.Domain.Entities;
 
-/// <summary>A tree chart (organization chart or family tree) grouping its nodes.</summary>
+/// <summary>A relationship chart grouping its nodes, using a chart type's vocabulary.</summary>
 public class Chart : BaseEntity
 {
     public string Name { get; set; } = string.Empty;
 
-    public ChartMode Mode { get; set; } = ChartMode.Org;
+    /// <summary>The relationship vocabulary this chart uses. Null only for unmigrated rows.</summary>
+    public Guid? ChartTypeId { get; set; }
+
+    public ChartType? ChartType { get; set; }
 
     /// <summary>
     /// Marker for auto-created reference charts (Org/Family examples). The
