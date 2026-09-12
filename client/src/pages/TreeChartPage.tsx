@@ -22,8 +22,9 @@ import { Spinner } from '@/components/ui/Spinner';
 import { useToast } from '@/components/ui/Toast';
 import { getErrorMessage } from '@/lib/errors';
 import { ChartPicker } from '@/features/tree/components/ChartPicker';
+import { ChartTypeManager } from '@/features/tree/components/ChartTypeManager';
 import { LevelLegend } from '@/features/tree/components/LevelLegend';
-import { NodeForm } from '@/features/tree/components/NodeForm';
+import { NodeForm, type NodeFormSubmitOptions } from '@/features/tree/components/NodeForm';
 import { TreeCanvas } from '@/features/tree/components/TreeCanvas';
 import {
   ChartExportStage,
@@ -33,17 +34,30 @@ import { useTreeChart } from '@/hooks/useTreeChart';
 import { AppearancePanel } from '@/features/tree/theme/AppearancePanel';
 import { useTheme } from '@/features/tree/theme/ThemeProvider';
 import type {
-  ChartMode,
+  ChartType,
   NodePhotoDraft,
+  RelationshipTypeDef,
   TreeNode,
   TreeNodeInput,
 } from '@/features/tree/types';
 
 type FormMode = 'add' | 'edit' | null;
 
+/** Fallback vocabulary if a chart's type is missing (e.g. deleted). */
+const EMPTY_CHART_TYPE: ChartType = {
+  id: '',
+  name: '',
+  relationships: [],
+  isExample: false,
+  createdAt: '',
+  updatedAt: '',
+};
+
 export function TreeChartPage() {
   const {
     chart,
+    chartTypes,
+    activeChartType,
     loading,
     error,
     reload,
@@ -57,7 +71,8 @@ export function TreeChartPage() {
     deleteNodes,
     applyAutoLayout,
     reset,
-    setChartMode,
+    setChartType,
+    updateChartType,
   } = useTreeChart();
   const { success: toastSuccess, error: toastError } = useToast();
   const { theme } = useTheme();
@@ -69,6 +84,8 @@ export function TreeChartPage() {
   const [actionsOpen, setActionsOpen] = useState(false);
   const [pickerOpen, setPickerOpen] = useState(false);
   const [appearanceOpen, setAppearanceOpen] = useState(false);
+  const [chartTypeManagerOpen, setChartTypeManagerOpen] = useState(false);
+  const [chartTypeManagerNew, setChartTypeManagerNew] = useState(false);
 
   const exportStageRef = useRef<ChartExportHandle>(null);
   const [exporting, setExporting] = useState(false);
@@ -84,6 +101,8 @@ export function TreeChartPage() {
     setSelectedIds(new Set());
     setMultiSelect(false);
   }, [chart?.id]);
+
+  const effectiveChartType = activeChartType ?? EMPTY_CHART_TYPE;
 
   const openAdd = () => {
     setEditingNode(null);
@@ -104,6 +123,7 @@ export function TreeChartPage() {
     input: TreeNodeInput,
     editingId: string | null,
     photo: NodePhotoDraft,
+    options?: NodeFormSubmitOptions,
   ) => {
     try {
       if (editingId) {
@@ -113,6 +133,7 @@ export function TreeChartPage() {
           level: input.level,
           notes: input.notes,
           photoUrl: input.photoUrl,
+          relationshipTypeId: input.relationshipTypeId,
         });
         await setParent(editingId, input.parentId);
         if (input.partnerId !== editingNode?.partnerId) {
@@ -126,6 +147,10 @@ export function TreeChartPage() {
         toastSuccess('Node updated');
       } else {
         const created = await addNode(input);
+        // "Add as Parent/Manager of X": reparent X under the new node.
+        if (options?.reparentNodeId) {
+          await setParent(options.reparentNodeId, created.id);
+        }
         if (photo.file) {
           await uploadPhoto(created.id, photo.file);
         }
@@ -137,6 +162,14 @@ export function TreeChartPage() {
         getErrorMessage(err, editingId ? 'Failed to update node' : 'Failed to create node'),
       );
     }
+  };
+
+  const handleCreateRelationshipType = async (def: RelationshipTypeDef) => {
+    if (!activeChartType) return;
+    await updateChartType(activeChartType.id, {
+      name: activeChartType.name,
+      relationships: [...activeChartType.relationships, def],
+    });
   };
 
   const handleRename = async (id: string, name: string) => {
@@ -271,36 +304,43 @@ export function TreeChartPage() {
             <Dropdown
               variant="pill"
               ariaLabel="Chart type"
-              value={chart.mode}
+              value={chart.chartTypeId}
               trigger={
                 <span
                   className="inline-flex items-center gap-1.5 whitespace-nowrap text-sm font-semibold"
                   style={{ color: theme.textPrimary }}
                 >
-                  {chart.mode === 'org' ? 'Org chart' : 'Family tree'}
+                  {activeChartType?.name ?? 'Chart type'}
                 </span>
               }
               options={[
-                {
-                  id: 'org',
-                  label: 'Org chart',
-                  description: 'Managers, reports & job titles',
-                },
-                {
-                  id: 'family',
-                  label: 'Family tree',
-                  description: 'Relationships, spouses & generations',
-                },
+                ...chartTypes.map((ct) => ({
+                  id: ct.id,
+                  label: ct.name,
+                  description:
+                    ct.relationships.length === 0
+                      ? 'No relationship types yet'
+                      : `${ct.relationships.length} relationship type${
+                          ct.relationships.length === 1 ? '' : 's'
+                        }`,
+                })),
+                { id: '__new__', label: '+ New chart type', description: 'Start blank or duplicate' },
+                { id: '__manage__', label: 'Manage chart types…', description: 'Edit, rename or delete' },
               ]}
               onSelect={(id) => {
-                const next = id as ChartMode;
-                if (next === chart.mode) return;
-                void setChartMode(next)
-                  .then(() =>
-                    toastSuccess(
-                      next === 'org' ? 'Switched to org chart' : 'Switched to family tree',
-                    ),
-                  )
+                if (id === '__new__') {
+                  setChartTypeManagerNew(true);
+                  setChartTypeManagerOpen(true);
+                  return;
+                }
+                if (id === '__manage__') {
+                  setChartTypeManagerNew(false);
+                  setChartTypeManagerOpen(true);
+                  return;
+                }
+                if (id === chart.chartTypeId) return;
+                void setChartType(id)
+                  .then(() => toastSuccess('Chart type switched'))
                   .catch(() => toastError('Failed to switch chart type'));
               }}
             />
@@ -422,13 +462,13 @@ export function TreeChartPage() {
             </button>
           </div>
         </div>
-        <LevelLegend nodes={chart.nodes} mode={chart.mode} />
+        <LevelLegend nodes={chart.nodes} />
       </header>
 
       <main className="relative min-h-0 flex-1">
         <TreeCanvas
           nodes={chart.nodes}
-          mode={chart.mode}
+          chartType={effectiveChartType}
           selectedId={selectedId}
           selectionMode={multiSelect}
           multiSelectedIds={selectedIds}
@@ -470,11 +510,12 @@ export function TreeChartPage() {
       <NodeForm
         open={formMode !== null}
         mode={formMode === 'edit' ? 'edit' : 'add'}
-        chartMode={chart.mode}
+        chartType={effectiveChartType}
         node={editingNode}
         nodes={chart.nodes}
         defaultParentId={selectedId}
         onClose={closeForm}
+        onCreateRelationshipType={handleCreateRelationshipType}
         onSubmit={handleSubmitForm}
       />
 
@@ -600,9 +641,15 @@ export function TreeChartPage() {
 
       <ChartPicker open={pickerOpen} onClose={() => setPickerOpen(false)} />
 
+      <ChartTypeManager
+        open={chartTypeManagerOpen}
+        startNew={chartTypeManagerNew}
+        onClose={() => setChartTypeManagerOpen(false)}
+      />
+
       <AppearancePanel open={appearanceOpen} onClose={() => setAppearanceOpen(false)} />
 
-      {exporting && <ChartExportStage ref={exportStageRef} chart={chart} />}
+      {exporting && <ChartExportStage ref={exportStageRef} chart={chart} chartType={effectiveChartType} />}
     </div>
   );
 }

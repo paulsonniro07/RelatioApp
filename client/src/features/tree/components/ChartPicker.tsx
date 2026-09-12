@@ -7,9 +7,8 @@ import { Modal } from '@/components/ui/Modal';
 import { PencilIcon, TrashIcon } from '@/components/ui/icons';
 import { useToast } from '@/components/ui/Toast';
 import { getErrorMessage } from '@/lib/errors';
-import { ModeToggle } from '@/features/tree/components/ModeToggle';
 import { useTreeChart } from '@/hooks/useTreeChart';
-import type { ChartMode, ChartSummary } from '@/features/tree/types';
+import type { ChartSummary } from '@/features/tree/types';
 
 interface ChartPickerProps {
   open: boolean;
@@ -17,11 +16,12 @@ interface ChartPickerProps {
 }
 
 export function ChartPicker({ open, onClose }: ChartPickerProps) {
-  const { charts, chart, selectChart, createChart, renameChart, deleteChart } = useTreeChart();
+  const { charts, chart, chartTypes, selectChart, createChart, renameChart, deleteChart } =
+    useTreeChart();
   const { error: toastError } = useToast();
 
   const [name, setName] = useState('');
-  const [mode, setMode] = useState<ChartMode>('org');
+  const [chartTypeId, setChartTypeId] = useState('');
   const [error, setError] = useState('');
 
   const [renamingId, setRenamingId] = useState<string | null>(null);
@@ -30,15 +30,25 @@ export function ChartPicker({ open, onClose }: ChartPickerProps) {
 
   const [deletingChart, setDeletingChart] = useState<ChartSummary | null>(null);
 
+  const chartTypeName = (id: string) =>
+    chartTypes.find((ct) => ct.id === id)?.name ?? 'Unknown type';
+
+  const resolvedTypeId =
+    chartTypeId || chart?.chartTypeId || chartTypes[0]?.id || '';
+
   const handleCreate = async () => {
     const trimmed = name.trim();
     if (!trimmed) {
       setError('Name is required');
       return;
     }
+    if (!resolvedTypeId) {
+      setError('Create a chart type first');
+      return;
+    }
     setError('');
     try {
-      await createChart(trimmed, mode);
+      await createChart(trimmed, resolvedTypeId);
       setName('');
       onClose();
     } catch (err) {
@@ -140,7 +150,7 @@ export function ChartPicker({ open, onClose }: ChartPickerProps) {
                           )}
                         </span>
                         <span className="ml-2 shrink-0 text-xs text-gray-400">
-                          {c.mode === 'org' ? 'Org' : 'Family'}
+                          {chartTypeName(c.chartTypeId)}
                         </span>
                       </button>
                       <button
@@ -181,10 +191,20 @@ export function ChartPicker({ open, onClose }: ChartPickerProps) {
                 error={error}
                 placeholder="e.g. My Org Chart"
               />
-              <div className="flex items-center justify-between gap-3">
-                <span className="text-sm font-medium text-gray-700">Type</span>
-                <ModeToggle mode={mode} onChange={setMode} />
-              </div>
+              <label className="block text-sm font-medium text-gray-700">
+                Chart type
+                <select
+                  value={resolvedTypeId}
+                  onChange={(event) => setChartTypeId(event.target.value)}
+                  className="mt-1 w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 focus:border-blue-400 focus:outline-none focus:ring-2 focus:ring-blue-100"
+                >
+                  {chartTypes.map((ct) => (
+                    <option key={ct.id} value={ct.id}>
+                      {ct.name}
+                    </option>
+                  ))}
+                </select>
+              </label>
               <div className="flex justify-end gap-2">
                 <Button variant="secondary" onClick={onClose}>
                   Cancel
@@ -202,7 +222,7 @@ export function ChartPicker({ open, onClose }: ChartPickerProps) {
         message={
           deletingChart
             ? deletingChart.isExample
-              ? `Delete the example chart "${deletingChart.name}"? It will be re-created automatically so an Org + Family reference is always available.`
+              ? `Delete the example chart "${deletingChart.name}"? It will be re-created automatically so reference charts are always available.`
               : `Delete "${deletingChart.name}"? This removes the chart and all of its nodes.`
             : ''
         }
@@ -213,4 +233,3 @@ export function ChartPicker({ open, onClose }: ChartPickerProps) {
     </>
   );
 }
-

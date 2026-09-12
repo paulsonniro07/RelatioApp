@@ -47,6 +47,7 @@ public class CreateNodeHandler : IRequestHandler<CreateNodeCommand, TreeNodeDto>
             PartnerId = null,
             Level = request.Input.Level ?? string.Empty,
             RoleOrRelationship = request.Input.Role ?? string.Empty,
+            RelationshipTypeId = request.Input.RelationshipTypeId,
             Notes = request.Input.Notes ?? string.Empty,
             PhotoUrl = request.Input.PhotoUrl,
             PositionX = request.Input.PositionX,

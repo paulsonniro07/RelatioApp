@@ -1,5 +1,5 @@
 import { NODE_HEIGHT, NODE_WIDTH } from './layout';
-import type { ChartMode, TreeNode } from './types';
+import type { TreeNode } from './types';
 
 export type EdgeKind = 'parent' | 'partner';
 
@@ -12,17 +12,16 @@ export interface TreeEdge {
 /**
  * Builds the list of edges to draw.
  * - parent: every node pointing at its parent.
- * - partner: mutual spouse links, deduplicated (one edge per couple).
- * Partner edges are only rendered in family mode.
+ * - partner: mutual lateral links, deduplicated (one edge per pair).
  */
-export function computeEdges(nodes: TreeNode[], mode: ChartMode): TreeEdge[] {
+export function computeEdges(nodes: TreeNode[]): TreeEdge[] {
   const ids = new Set(nodes.map((n) => n.id));
   const edges: TreeEdge[] = [];
   for (const node of nodes) {
     if (node.parentId && ids.has(node.parentId)) {
       edges.push({ fromId: node.parentId, toId: node.id, kind: 'parent' });
     }
-    if (mode === 'family' && node.partnerId && ids.has(node.partnerId) && node.id < node.partnerId) {
+    if (node.partnerId && ids.has(node.partnerId) && node.id < node.partnerId) {
       edges.push({ fromId: node.id, toId: node.partnerId, kind: 'partner' });
     }
   }

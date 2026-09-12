@@ -5,17 +5,24 @@ using RelatioApp.Application.Common.Interfaces;
 using RelatioApp.Application.DTOs.Charts;
 using RelatioApp.Application.Features.Charts.Mappings;
 using RelatioApp.Domain.Entities;
-using RelatioApp.Domain.Enums;
 
 namespace RelatioApp.Application.Features.Charts.Commands;
 
-public record UpdateChartCommand(Guid ChartId, string? Name, string? Mode) : IRequest<ChartDto>;
+public record UpdateChartCommand(Guid ChartId, string? Name, Guid? ChartTypeId)
+    : IRequest<ChartDto>;
 
 public class UpdateChartHandler : IRequestHandler<UpdateChartCommand, ChartDto>
 {
     private readonly IChartRepository _repository;
+    private readonly IChartTypeRepository _chartTypeRepository;
 
-    public UpdateChartHandler(IChartRepository repository) => _repository = repository;
+    public UpdateChartHandler(
+        IChartRepository repository,
+        IChartTypeRepository chartTypeRepository)
+    {
+        _repository = repository;
+        _chartTypeRepository = chartTypeRepository;
+    }
 
     public async Task<ChartDto> Handle(UpdateChartCommand request, CancellationToken ct)
     {
@@ -23,11 +30,11 @@ public class UpdateChartHandler : IRequestHandler<UpdateChartCommand, ChartDto>
             ?? throw new NotFoundException(nameof(Chart), request.ChartId);
 
         var hasName = !string.IsNullOrWhiteSpace(request.Name);
-        var hasMode = !string.IsNullOrWhiteSpace(request.Mode);
+        var hasChartType = request.ChartTypeId.HasValue;
 
-        if (!hasName && !hasMode)
+        if (!hasName && !hasChartType)
         {
-            throw ValidationErrors.Field("name", "Provide a name or mode to update.");
+            throw ValidationErrors.Field("name", "Provide a name or chart type to update.");
         }
 
         if (hasName)
@@ -41,14 +48,14 @@ public class UpdateChartHandler : IRequestHandler<UpdateChartCommand, ChartDto>
             chart.Name = trimmedName;
         }
 
-        if (hasMode)
+        if (hasChartType)
         {
-            if (!ChartMapper.TryParseMode(request.Mode, out var mode))
+            if (await _chartTypeRepository.GetByIdAsync(request.ChartTypeId!.Value, ct) is null)
             {
-                throw ValidationErrors.Field("mode", "Mode must be 'org' or 'family'.");
+                throw ValidationErrors.Field("chartTypeId", "Chart type not found.");
             }
 
-            chart.Mode = mode;
+            chart.ChartTypeId = request.ChartTypeId;
         }
 
         await _repository.SaveChangesAsync(ct);

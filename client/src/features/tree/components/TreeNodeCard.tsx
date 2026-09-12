@@ -15,13 +15,12 @@ import { NODE_HEIGHT, NODE_WIDTH } from '@/features/tree/layout';
 import { avatarEntryForDepth } from '@/features/tree/theme/colorUtils';
 import { useTheme } from '@/features/tree/theme/ThemeProvider';
 import type { RelationshipType } from '@/features/tree/theme/types';
-import type { ChartMode, TreeNode } from '@/features/tree/types';
+import type { TreeNode } from '@/features/tree/types';
 
 import { NodeAvatar } from './NodeAvatar';
 
 interface TreeNodeCardProps {
   node: TreeNode;
-  mode: ChartMode;
   /** Hierarchy depth (root = 0). */
   depth?: number;
   /** Relationship-type persona resolved from the tree (drives tint/strip). */
@@ -38,16 +37,15 @@ interface TreeNodeCardProps {
 }
 
 /** Small prefix icon for the role/relationship line, per persona. */
-function personaIcon(persona: RelationshipType, mode: ChartMode, className: string): ReactNode {
-  if (mode === 'org') return <BriefcaseIcon className={className} />;
-  if (persona === 'grandparent') return <StarIcon className={className} />;
+function personaIcon(persona: RelationshipType, className: string): ReactNode {
+  if (persona === 'manager' || persona === 'report') return <BriefcaseIcon className={className} />;
   if (persona === 'spouse') return <HeartIcon className={className} />;
+  if (persona === 'parent' || persona === 'grandparent') return <StarIcon className={className} />;
   return <UserIcon className={className} />;
 }
 
 export function TreeNodeCard({
   node,
-  mode,
   depth = 0,
   persona = 'child',
   selected = false,
@@ -75,9 +73,9 @@ export function TreeNodeCard({
   const avatarBackground = hasTint ? cardAccent : avatarEntry.background;
   const avatarForeground = hasTint ? '#ffffff' : avatarEntry.foreground;
 
-  /** Third body line: note/trait (any mode) or manual level (org). */
+  /** Third body line: note/trait, or the manual level when no note is set. */
   const hasNotes = Boolean(node.notes);
-  const thirdLine = node.notes || (mode === 'org' ? node.level : '') || '';
+  const thirdLine = node.notes || node.level || '';
 
   const startRename = () => {
     setDraft(node.name);
@@ -193,7 +191,7 @@ export function TreeNodeCard({
                   className="flex items-center gap-1 truncate text-xs leading-tight"
                   style={{ color: theme.textSecondary }}
                 >
-                  {personaIcon(persona, mode, 'h-3.5 w-3.5 shrink-0')}
+                  {personaIcon(persona, 'h-3.5 w-3.5 shrink-0')}
                   <span className="truncate">{node.role}</span>
                 </p>
               ) : null}

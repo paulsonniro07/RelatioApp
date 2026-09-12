@@ -1,14 +1,20 @@
 import { useEffect, useRef, type KeyboardEvent, type ReactNode } from 'react';
 
+import { useBodyScrollLock } from '@/hooks/useBodyScrollLock';
+
 interface ModalProps {
   open: boolean;
   title: string;
   onClose: () => void;
+  /** Wider panel for multi-column editors (e.g. chart type manager). */
+  wide?: boolean;
   children: ReactNode;
 }
 
-export function Modal({ open, title, onClose, children }: ModalProps) {
+export function Modal({ open, title, onClose, wide = false, children }: ModalProps) {
   const panelRef = useRef<HTMLDivElement>(null);
+
+  useBodyScrollLock(open);
 
   useEffect(() => {
     if (!open) return;
@@ -20,15 +26,6 @@ export function Modal({ open, title, onClose, children }: ModalProps) {
     const first = focusables[0];
     if (first) first.focus();
     else panel.focus();
-  }, [open]);
-
-  useEffect(() => {
-    if (!open) return;
-    const previousOverflow = document.body.style.overflow;
-    document.body.style.overflow = 'hidden';
-    return () => {
-      document.body.style.overflow = previousOverflow;
-    };
   }, [open]);
 
   if (!open) return null;
@@ -77,6 +74,7 @@ export function Modal({ open, title, onClose, children }: ModalProps) {
         tabIndex={-1}
         onKeyDown={handleKeyDown}
         className="max-h-[90vh] w-full max-w-md overflow-y-auto rounded-lg bg-white p-6 shadow-xl outline-none"
+        style={wide ? { maxWidth: '42rem' } : undefined}
       >
         <div className="mb-4 flex items-center justify-between gap-4">
           <h2 className="text-lg font-semibold text-gray-900">{title}</h2>

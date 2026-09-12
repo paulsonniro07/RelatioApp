@@ -30,6 +30,9 @@ public class TreeNode : BaseEntity
     /// <summary>Role / relationship label, e.g. "VP Engineering", "Parent".</summary>
     public string RoleOrRelationship { get; set; } = string.Empty;
 
+    /// <summary>Relationship type slug this node was placed with (null for legacy/manual).</summary>
+    public string? RelationshipTypeId { get; set; }
+
     public string Notes { get; set; } = string.Empty;
 
     public string? PhotoUrl { get; set; }

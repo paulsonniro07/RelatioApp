@@ -35,6 +35,7 @@ public static class DependencyInjection
         services.AddScoped(typeof(IGenericRepository<>), typeof(GenericRepository<>));
         services.AddScoped<IChartRepository, ChartRepository>();
         services.AddScoped<ITreeNodeRepository, TreeNodeRepository>();
+        services.AddScoped<IChartTypeRepository, ChartTypeRepository>();
 
         services.AddSingleton<IFileStorage>(new LocalFileStorage(uploadsDirectory));
 

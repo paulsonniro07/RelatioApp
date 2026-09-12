@@ -16,11 +16,13 @@ public class TreeNodeConfiguration : IEntityTypeConfiguration<TreeNode>
         builder.Property(n => n.Name).HasMaxLength(200).IsRequired();
         builder.Property(n => n.Level).HasMaxLength(100);
         builder.Property(n => n.RoleOrRelationship).HasMaxLength(200);
+        builder.Property(n => n.RelationshipTypeId).HasMaxLength(100);
         builder.Property(n => n.PhotoUrl).HasMaxLength(500);
 
         builder.HasIndex(n => n.ChartId);
         builder.HasIndex(n => n.ParentId);
         builder.HasIndex(n => n.PartnerId);
+        builder.HasIndex(n => n.RelationshipTypeId);
         builder.HasIndex(n => n.IsDeleted);
 
         builder.HasOne(n => n.Chart)

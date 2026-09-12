@@ -19,6 +19,7 @@ function node(
     partnerId,
     level,
     role,
+    relationshipTypeId: null,
     notes,
     photoUrl: null,
     positionX: 0,
@@ -32,7 +33,7 @@ function createOrgSample(): Chart {
   return {
     id: 'sample-org',
     name: 'Acme Org Chart',
-    mode: 'org',
+    chartTypeId: '',
     isExample: true,
     createdAt: '',
     updatedAt: '',
@@ -53,7 +54,7 @@ function createFamilySample(): Chart {
   return {
     id: 'sample-family',
     name: 'Rivera Family Tree',
-    mode: 'family',
+    chartTypeId: '',
     // Level/manual grouping is org-only — family uses the tree depth implicitly.
     isExample: true,
     createdAt: '',

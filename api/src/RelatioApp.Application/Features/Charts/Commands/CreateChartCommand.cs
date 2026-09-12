@@ -5,7 +5,6 @@ using RelatioApp.Application.Common.Interfaces;
 using RelatioApp.Application.DTOs.Charts;
 using RelatioApp.Application.Features.Charts.Mappings;
 using RelatioApp.Domain.Entities;
-using RelatioApp.Domain.Enums;
 
 namespace RelatioApp.Application.Features.Charts.Commands;
 
@@ -14,8 +13,15 @@ public record CreateChartCommand(CreateChartDto Input) : IRequest<ChartDto>;
 public class CreateChartHandler : IRequestHandler<CreateChartCommand, ChartDto>
 {
     private readonly IChartRepository _repository;
+    private readonly IChartTypeRepository _chartTypeRepository;
 
-    public CreateChartHandler(IChartRepository repository) => _repository = repository;
+    public CreateChartHandler(
+        IChartRepository repository,
+        IChartTypeRepository chartTypeRepository)
+    {
+        _repository = repository;
+        _chartTypeRepository = chartTypeRepository;
+    }
 
     public async Task<ChartDto> Handle(CreateChartCommand request, CancellationToken ct)
     {
@@ -30,12 +36,17 @@ public class CreateChartHandler : IRequestHandler<CreateChartCommand, ChartDto>
             throw new ConflictException($"A chart named '{trimmedName}' already exists.");
         }
 
-        if (!ChartMapper.TryParseMode(request.Input.Mode, out var mode))
+        if (await _chartTypeRepository.GetByIdAsync(request.Input.ChartTypeId, ct) is null)
         {
-            throw ValidationErrors.Field("mode", "Mode must be 'org' or 'family'.");
+            throw ValidationErrors.Field("chartTypeId", "Chart type not found.");
         }
 
-        var chart = new Chart { Name = trimmedName, Mode = mode, IsExample = request.Input.IsExample };
+        var chart = new Chart
+        {
+            Name = trimmedName,
+            ChartTypeId = request.Input.ChartTypeId,
+            IsExample = request.Input.IsExample,
+        };
         var created = await _repository.CreateAsync(chart, ct);
         return ChartMapper.ToDto(created);
     }

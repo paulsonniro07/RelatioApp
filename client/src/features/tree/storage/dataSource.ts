@@ -1,5 +1,12 @@
 import type { CreateChartInput, TreeNodePatch } from '../service';
-import type { Chart, ChartMode, ChartSummary, TreeNode, TreeNodeInput } from '../types';
+import type {
+  Chart,
+  ChartSummary,
+  ChartType,
+  ChartTypeInput,
+  TreeNode,
+  TreeNodeInput,
+} from '../types';
 
 /**
  * Storage seam for chart data.
@@ -16,9 +23,15 @@ export interface TreeDataSource {
   createChart(input: CreateChartInput): Promise<Chart>;
   updateChart(
     chartId: string,
-    input: { name?: string; mode?: ChartMode },
+    input: { name?: string; chartTypeId?: string },
   ): Promise<Chart>;
   deleteChart(chartId: string): Promise<void>;
+
+  /** User-managed chart types (relationship vocabulary), workspace-level. */
+  getChartTypes(): Promise<ChartType[]>;
+  createChartType(input: ChartTypeInput): Promise<ChartType>;
+  updateChartType(chartTypeId: string, input: ChartTypeInput): Promise<ChartType>;
+  deleteChartType(chartTypeId: string): Promise<void>;
 
   createNode(chartId: string, input: TreeNodeInput): Promise<TreeNode>;
   updateNode(

@@ -28,6 +28,9 @@ namespace RelatioApp.Infrastructure.Persistence.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("uuid");
 
+                    b.Property<Guid?>("ChartTypeId")
+                        .HasColumnType("uuid");
+
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("timestamp with time zone");
 
@@ -42,10 +45,45 @@ namespace RelatioApp.Infrastructure.Persistence.Migrations
                         .HasColumnType("boolean")
                         .HasDefaultValue(false);
 
-                    b.Property<string>("Mode")
+                    b.Property<string>("Name")
                         .IsRequired()
-                        .HasMaxLength(20)
-                        .HasColumnType("character varying(20)");
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("UpdatedBy")
+                        .HasColumnType("text");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ChartTypeId");
+
+                    b.HasIndex("IsDeleted");
+
+                    b.ToTable("Charts", (string)null);
+                });
+
+            modelBuilder.Entity("RelatioApp.Domain.Entities.ChartType", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("CreatedBy")
+                        .HasColumnType("text");
+
+                    b.Property<bool>("IsDeleted")
+                        .HasColumnType("boolean");
+
+                    b.Property<bool>("IsExample")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("boolean")
+                        .HasDefaultValue(false);
 
                     b.Property<string>("Name")
                         .IsRequired()
@@ -62,7 +100,73 @@ namespace RelatioApp.Infrastructure.Persistence.Migrations
 
                     b.HasIndex("IsDeleted");
 
-                    b.ToTable("Charts", (string)null);
+                    b.ToTable("ChartTypes", (string)null);
+                });
+
+            modelBuilder.Entity("RelatioApp.Domain.Entities.RelationshipTypeDefinition", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("BackwardLabel")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
+                    b.Property<Guid>("ChartTypeId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("CreatedBy")
+                        .HasColumnType("text");
+
+                    b.Property<bool>("Directional")
+                        .HasColumnType("boolean");
+
+                    b.Property<string>("ForwardLabel")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
+                    b.Property<string>("Icon")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("character varying(50)");
+
+                    b.Property<bool>("IsDeleted")
+                        .HasColumnType("boolean");
+
+                    b.Property<string>("Label")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
+                    b.Property<string>("Link")
+                        .IsRequired()
+                        .HasMaxLength(30)
+                        .HasColumnType("character varying(30)");
+
+                    b.Property<string>("TypeId")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("UpdatedBy")
+                        .HasColumnType("text");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ChartTypeId");
+
+                    b.HasIndex("IsDeleted");
+
+                    b.ToTable("RelationshipTypeDefinitions", (string)null);
                 });
 
             modelBuilder.Entity("RelatioApp.Domain.Entities.TreeNode", b =>
@@ -113,6 +217,10 @@ namespace RelatioApp.Infrastructure.Persistence.Migrations
                     b.Property<double>("PositionY")
                         .HasColumnType("double precision");
 
+                    b.Property<string>("RelationshipTypeId")
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)");
+
                     b.Property<string>("RoleOrRelationship")
                         .IsRequired()
                         .HasMaxLength(200)
@@ -134,7 +242,30 @@ namespace RelatioApp.Infrastructure.Persistence.Migrations
 
                     b.HasIndex("PartnerId");
 
+                    b.HasIndex("RelationshipTypeId");
+
                     b.ToTable("TreeNodes", (string)null);
+                });
+
+            modelBuilder.Entity("RelatioApp.Domain.Entities.Chart", b =>
+                {
+                    b.HasOne("RelatioApp.Domain.Entities.ChartType", "ChartType")
+                        .WithMany()
+                        .HasForeignKey("ChartTypeId")
+                        .OnDelete(DeleteBehavior.SetNull);
+
+                    b.Navigation("ChartType");
+                });
+
+            modelBuilder.Entity("RelatioApp.Domain.Entities.RelationshipTypeDefinition", b =>
+                {
+                    b.HasOne("RelatioApp.Domain.Entities.ChartType", "ChartType")
+                        .WithMany("Relationships")
+                        .HasForeignKey("ChartTypeId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("ChartType");
                 });
 
             modelBuilder.Entity("RelatioApp.Domain.Entities.TreeNode", b =>
@@ -165,6 +296,11 @@ namespace RelatioApp.Infrastructure.Persistence.Migrations
             modelBuilder.Entity("RelatioApp.Domain.Entities.Chart", b =>
                 {
                     b.Navigation("Nodes");
+                });
+
+            modelBuilder.Entity("RelatioApp.Domain.Entities.ChartType", b =>
+                {
+                    b.Navigation("Relationships");
                 });
 
             modelBuilder.Entity("RelatioApp.Domain.Entities.TreeNode", b =>

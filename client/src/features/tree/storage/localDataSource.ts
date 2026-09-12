@@ -1,8 +1,20 @@
+import {
+  STARTER_CHART_TYPES,
+  chartTypeForLegacyMode,
+  inferRelationshipId,
+} from '../chartTypes';
 import { computeAutoLayout } from '../layout';
 import { preparePhotoFile } from '../photo';
 import { createSampleChart } from '../sampleData';
 import type { CreateChartInput, TreeNodePatch } from '../service';
-import type { Chart, ChartMode, ChartSummary, TreeNode, TreeNodeInput } from '../types';
+import type {
+  Chart,
+  ChartSummary,
+  ChartType,
+  ChartTypeInput,
+  TreeNode,
+  TreeNodeInput,
+} from '../types';
 import type { TreeDataSource } from './dataSource';
 
 /**
@@ -24,6 +36,7 @@ const STORAGE_KEY = 'relatio:ds:v1';
 interface LocalDatabase {
   version: 1;
   charts: Chart[];
+  chartTypes: ChartType[];
 }
 
 /** A photo bigger than ~1 MB of data-URL text is not worth keeping locally. */
@@ -53,7 +66,7 @@ function toSummary(chart: Chart): ChartSummary {
   return {
     id: chart.id,
     name: chart.name,
-    mode: chart.mode,
+    chartTypeId: chart.chartTypeId,
     isExample: chart.isExample,
     createdAt: chart.createdAt,
     updatedAt: chart.updatedAt,
@@ -69,17 +82,20 @@ function isQuotaError(error: unknown): boolean {
 }
 
 function readDatabase(): LocalDatabase {
-  if (!isBrowser()) return { version: 1, charts: [] };
+  if (!isBrowser()) return { version: 1, charts: [], chartTypes: [] };
   try {
     const raw = window.localStorage.getItem(STORAGE_KEY);
     if (raw) {
       const parsed = JSON.parse(raw) as LocalDatabase;
-      if (parsed && Array.isArray(parsed.charts)) return parsed;
+      if (parsed && Array.isArray(parsed.charts)) {
+        if (!Array.isArray(parsed.chartTypes)) parsed.chartTypes = [];
+        return parsed;
+      }
     }
   } catch {
     // Corrupt/missing document — start fresh rather than crash the app.
   }
-  return { version: 1, charts: [] };
+  return { version: 1, charts: [], chartTypes: [] };
 }
 
 function writeDatabase(database: LocalDatabase): void {
@@ -115,7 +131,7 @@ function findNode(chart: Chart, nodeId: string): TreeNode {
  * timestamps and auto-layout positions. Parents/partners are resolved through
  * an id map, so every link points at an existing node in both directions.
  */
-function materializeSampleChart(kind: 'org' | 'family'): Chart {
+function materializeSampleChart(kind: 'org' | 'family', chartType: ChartType): Chart {
   const sample = createSampleChart(kind);
   const positions = computeAutoLayout(sample.nodes);
   const idMap = new Map<string, string>();
@@ -133,6 +149,7 @@ function materializeSampleChart(kind: 'org' | 'family'): Chart {
       partnerId: node.partnerId ? (idMap.get(node.partnerId) ?? null) : null,
       level: node.level,
       role: node.role,
+      relationshipTypeId: inferRelationshipId(chartType, node.role),
       notes: node.notes,
       photoUrl: null,
       positionX: position?.x ?? 0,
@@ -145,7 +162,7 @@ function materializeSampleChart(kind: 'org' | 'family'): Chart {
   return {
     id: chartId,
     name: sample.name,
-    mode: sample.mode,
+    chartTypeId: chartType.id,
     isExample: true,
     createdAt: timestamp,
     updatedAt: timestamp,
@@ -153,11 +170,63 @@ function materializeSampleChart(kind: 'org' | 'family'): Chart {
   };
 }
 
-/** Seeds the two reference examples on the very first run (empty storage). */
-function ensureInitialSamples(database: LocalDatabase): boolean {
-  if (database.charts.length > 0) return false;
-  database.charts = [materializeSampleChart('org'), materializeSampleChart('family')];
-  return true;
+function createChartTypeRecord(input: ChartTypeInput): ChartType {
+  const timestamp = nowIso();
+  return {
+    id: newId(),
+    name: input.name,
+    relationships: input.relationships.map((def) => ({ ...def })),
+    isExample: input.isExample ?? false,
+    createdAt: timestamp,
+    updatedAt: timestamp,
+  };
+}
+
+/**
+ * Seeds the starter chart types and reference examples on first run, and
+ * migrates legacy documents (charts stored with `mode` but no `chartTypeId`).
+ */
+function ensureInitialData(database: LocalDatabase): boolean {
+  let changed = false;
+
+  if (database.chartTypes.length === 0) {
+    database.chartTypes = STARTER_CHART_TYPES.map(createChartTypeRecord);
+    changed = true;
+  }
+
+  for (const chart of database.charts) {
+    const legacy = chart as unknown as { mode?: string };
+    if (!chart.chartTypeId) {
+      const fallback = chartTypeForLegacyMode(database.chartTypes, legacy.mode);
+      if (fallback) chart.chartTypeId = fallback.id;
+      delete legacy.mode;
+      changed = true;
+    }
+    const chartType = database.chartTypes.find((ct) => ct.id === chart.chartTypeId);
+    if (chartType) {
+      for (const node of chart.nodes) {
+        if (!node.relationshipTypeId) {
+          const inferred = inferRelationshipId(chartType, node.role);
+          if (inferred) {
+            node.relationshipTypeId = inferred;
+            changed = true;
+          }
+        }
+      }
+    }
+  }
+
+  if (database.charts.length === 0) {
+    const family = database.chartTypes.find((ct) => ct.name === 'Family');
+    const org = database.chartTypes.find((ct) => ct.name === 'Organization');
+    const seeded: Chart[] = [];
+    if (org) seeded.push(materializeSampleChart('org', org));
+    if (family) seeded.push(materializeSampleChart('family', family));
+    database.charts = seeded;
+    changed = true;
+  }
+
+  return changed;
 }
 
 function fileToDataUrl(file: File): Promise<string> {
@@ -172,22 +241,24 @@ function fileToDataUrl(file: File): Promise<string> {
 export const localDataSource: TreeDataSource = {
   async getCharts(): Promise<ChartSummary[]> {
     const database = readDatabase();
-    if (ensureInitialSamples(database)) writeDatabase(database);
+    if (ensureInitialData(database)) writeDatabase(database);
     return database.charts.map(toSummary);
   },
 
   async getChart(chartId: string): Promise<Chart> {
     const database = readDatabase();
+    if (ensureInitialData(database)) writeDatabase(database);
     return clone(findChart(database, chartId));
   },
 
   async createChart(input: CreateChartInput): Promise<Chart> {
     const database = readDatabase();
+    ensureInitialData(database);
     const timestamp = nowIso();
     const chart: Chart = {
       id: newId(),
       name: input.name,
-      mode: input.mode,
+      chartTypeId: input.chartTypeId,
       isExample: input.isExample ?? false,
       createdAt: timestamp,
       updatedAt: timestamp,
@@ -200,12 +271,12 @@ export const localDataSource: TreeDataSource = {
 
   async updateChart(
     chartId: string,
-    input: { name?: string; mode?: ChartMode },
+    input: { name?: string; chartTypeId?: string },
   ): Promise<Chart> {
     const database = readDatabase();
     const chart = findChart(database, chartId);
     if (input.name !== undefined) chart.name = input.name;
-    if (input.mode !== undefined) chart.mode = input.mode;
+    if (input.chartTypeId !== undefined) chart.chartTypeId = input.chartTypeId;
     chart.updatedAt = nowIso();
     writeDatabase(database);
     return clone(chart);
@@ -214,6 +285,39 @@ export const localDataSource: TreeDataSource = {
   async deleteChart(chartId: string): Promise<void> {
     const database = readDatabase();
     database.charts = database.charts.filter((c) => c.id !== chartId);
+    writeDatabase(database);
+  },
+
+  async getChartTypes(): Promise<ChartType[]> {
+    const database = readDatabase();
+    if (ensureInitialData(database)) writeDatabase(database);
+    return clone(database.chartTypes);
+  },
+
+  async createChartType(input: ChartTypeInput): Promise<ChartType> {
+    const database = readDatabase();
+    ensureInitialData(database);
+    const chartType = createChartTypeRecord(input);
+    database.chartTypes = [...database.chartTypes, chartType];
+    writeDatabase(database);
+    return clone(chartType);
+  },
+
+  async updateChartType(chartTypeId: string, input: ChartTypeInput): Promise<ChartType> {
+    const database = readDatabase();
+    const chartType = database.chartTypes.find((ct) => ct.id === chartTypeId);
+    if (!chartType) throw new Error('Chart type not found.');
+    chartType.name = input.name;
+    chartType.relationships = input.relationships.map((def) => ({ ...def }));
+    if (input.isExample !== undefined) chartType.isExample = input.isExample;
+    chartType.updatedAt = nowIso();
+    writeDatabase(database);
+    return clone(chartType);
+  },
+
+  async deleteChartType(chartTypeId: string): Promise<void> {
+    const database = readDatabase();
+    database.chartTypes = database.chartTypes.filter((ct) => ct.id !== chartTypeId);
     writeDatabase(database);
   },
 
@@ -229,6 +333,7 @@ export const localDataSource: TreeDataSource = {
       partnerId: input.partnerId,
       level: input.level,
       role: input.role,
+      relationshipTypeId: input.relationshipTypeId,
       notes: input.notes,
       photoUrl: input.photoUrl ?? null,
       positionX: input.positionX ?? 0,
@@ -266,6 +371,9 @@ export const localDataSource: TreeDataSource = {
     if (patch.level !== undefined) node.level = patch.level;
     if (patch.notes !== undefined) node.notes = patch.notes;
     if (patch.photoUrl !== undefined) node.photoUrl = patch.photoUrl;
+    if (patch.relationshipTypeId !== undefined) {
+      node.relationshipTypeId = patch.relationshipTypeId;
+    }
     const timestamp = nowIso();
     node.updatedAt = timestamp;
     chart.updatedAt = timestamp;

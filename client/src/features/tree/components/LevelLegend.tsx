@@ -2,20 +2,13 @@ import { useMemo } from 'react';
 
 import { useTheme } from '@/features/tree/theme/ThemeProvider';
 import { levelBadgeStyle } from '@/features/tree/theme/colorUtils';
-import type { ChartMode, TreeNode } from '@/features/tree/types';
+import type { TreeNode } from '@/features/tree/types';
 
 /**
- * Compact list of the distinct manual rank/tier labels in an ORG chart,
- * colored from the active theme's avatar palette. Hidden for family charts —
- * generation there is conveyed by the tree shape, not a manual level.
+ * Compact list of the distinct manual rank/tier labels in a chart, colored
+ * from the active theme's avatar palette. Hidden when no node has a level.
  */
-export function LevelLegend({
-  nodes,
-  mode,
-}: {
-  nodes: TreeNode[];
-  mode: ChartMode;
-}) {
+export function LevelLegend({ nodes }: { nodes: TreeNode[] }) {
   const { theme } = useTheme();
 
   const levels = useMemo(() => {
@@ -27,7 +20,7 @@ export function LevelLegend({
     return [...counts.entries()].sort((a, b) => b[1] - a[1]);
   }, [nodes]);
 
-  if (levels.length === 0 || mode === 'family') return null;
+  if (levels.length === 0) return null;
 
   return (
     <div className="mt-2 hidden flex-wrap items-center gap-2 md:flex">
