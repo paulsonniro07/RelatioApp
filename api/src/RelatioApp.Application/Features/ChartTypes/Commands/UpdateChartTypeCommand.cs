@@ -35,6 +35,7 @@ public class UpdateChartTypeHandler : IRequestHandler<UpdateChartTypeCommand, Ch
         }
 
         chartType.Name = name;
+        chartType.UsesLevels = request.Input.UsesLevels;
         if (request.Input.IsExample.HasValue)
         {
             chartType.IsExample = request.Input.IsExample.Value;

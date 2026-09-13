@@ -12,6 +12,7 @@ import type {
   ChartSummary,
   ChartType,
   ChartTypeInput,
+  LinkedNodeRef,
   TreeNode,
   TreeNodeInput,
 } from '../types';
@@ -150,6 +151,7 @@ function materializeSampleChart(kind: 'org' | 'family', chartType: ChartType): C
       level: node.level,
       role: node.role,
       relationshipTypeId: inferRelationshipId(chartType, node.role),
+      linkedNodeRef: null,
       notes: node.notes,
       photoUrl: null,
       positionX: position?.x ?? 0,
@@ -176,6 +178,7 @@ function createChartTypeRecord(input: ChartTypeInput): ChartType {
     id: newId(),
     name: input.name,
     relationships: input.relationships.map((def) => ({ ...def })),
+    usesLevels: input.usesLevels ?? false,
     isExample: input.isExample ?? false,
     createdAt: timestamp,
     updatedAt: timestamp,
@@ -309,6 +312,7 @@ export const localDataSource: TreeDataSource = {
     if (!chartType) throw new Error('Chart type not found.');
     chartType.name = input.name;
     chartType.relationships = input.relationships.map((def) => ({ ...def }));
+    if (input.usesLevels !== undefined) chartType.usesLevels = input.usesLevels;
     if (input.isExample !== undefined) chartType.isExample = input.isExample;
     chartType.updatedAt = nowIso();
     writeDatabase(database);
@@ -334,6 +338,7 @@ export const localDataSource: TreeDataSource = {
       level: input.level,
       role: input.role,
       relationshipTypeId: input.relationshipTypeId,
+      linkedNodeRef: null,
       notes: input.notes,
       photoUrl: input.photoUrl ?? null,
       positionX: input.positionX ?? 0,
@@ -452,6 +457,22 @@ export const localDataSource: TreeDataSource = {
       }
     }
 
+    node.updatedAt = timestamp;
+    chart.updatedAt = timestamp;
+    writeDatabase(database);
+    return clone(node);
+  },
+
+  async setNodeLink(
+    chartId: string,
+    nodeId: string,
+    ref: LinkedNodeRef | null,
+  ): Promise<TreeNode> {
+    const database = readDatabase();
+    const chart = findChart(database, chartId);
+    const node = findNode(chart, nodeId);
+    const timestamp = nowIso();
+    node.linkedNodeRef = ref ? { chartId: ref.chartId, nodeId: ref.nodeId } : null;
     node.updatedAt = timestamp;
     chart.updatedAt = timestamp;
     writeDatabase(database);

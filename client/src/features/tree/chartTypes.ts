@@ -26,6 +26,7 @@ export type RelationshipIconKey = (typeof RELATIONSHIP_ICON_KEYS)[number];
 export const STARTER_CHART_TYPES: ChartTypeInput[] = [
   {
     name: 'Family',
+    usesLevels: false,
     isExample: true,
     relationships: [
       {
@@ -59,6 +60,7 @@ export const STARTER_CHART_TYPES: ChartTypeInput[] = [
   },
   {
     name: 'Organization',
+    usesLevels: true,
     isExample: true,
     relationships: [
       {
@@ -83,6 +85,7 @@ export const STARTER_CHART_TYPES: ChartTypeInput[] = [
   },
   {
     name: 'School',
+    usesLevels: false,
     isExample: true,
     relationships: [
       {
@@ -202,15 +205,68 @@ export function resolvePartnerRelationship(
 ): RelationshipTypeDef | null {
   for (const node of nodes) {
     if (!node) continue;
-    const def = findRelationshipDef(chartType, node.relationshipTypeId);
+    const id = node.relationshipTypeId ?? inferRelationshipId(chartType, node.role);
+    const def = findRelationshipDef(chartType, id);
     if (def && (def.link === 'partner' || def.link === 'shared-parent')) return def;
   }
   return chartType.relationships.find((def) => def.link === 'partner') ?? null;
 }
 
+/** Connector geometry family: hierarchy (S-curve) or lateral (side-by-side line). */
+export type EdgeConnector = 'hierarchy' | 'lateral';
+
+export interface ResolvedEdgeStyle {
+  connector: EdgeConnector;
+  dashed: boolean;
+  showHeart: boolean;
+  label: string;
+}
+
+/**
+ * Resolves how any edge should be drawn from the relationship type definition
+ * that produced it (never from a hardcoded per-type branch). Every relationship
+ * type renders a connector; types with no matching definition fall back to a
+ * solid neutral line so nothing is silently dropped.
+ */
+export function resolveEdgeStyle(
+  chartType: ChartType,
+  kind: 'parent' | 'partner',
+  from: TreeNode | undefined,
+  to: TreeNode | undefined,
+): ResolvedEdgeStyle {
+  if (kind === 'parent') {
+    const def =
+      findRelationshipDef(
+        chartType,
+        to?.relationshipTypeId ?? inferRelationshipId(chartType, to?.role ?? ''),
+      ) ??
+      findRelationshipDef(
+        chartType,
+        from?.relationshipTypeId ?? inferRelationshipId(chartType, from?.role ?? ''),
+      ) ??
+      chartType.relationships.find((d) => d.directional && d.link === 'parent') ??
+      null;
+    return {
+      connector: 'hierarchy',
+      dashed: false,
+      showHeart: false,
+      label: def?.backwardLabel ?? '',
+    };
+  }
+
+  const def = resolvePartnerRelationship(chartType, from, to);
+  const isSpouseLike = def?.icon === 'heart';
+  return {
+    connector: 'lateral',
+    dashed: isSpouseLike,
+    showHeart: isSpouseLike,
+    label: def?.label ?? '',
+  };
+}
+
 /** Whether a chart type exposes the manual level/tier field and legend. */
 export function chartTypeUsesLevels(chartType: ChartType): boolean {
-  return chartType.relationships.some((def) => def.directional);
+  return chartType.usesLevels;
 }
 
 /** A relationship type with sensible defaults for the inline create form. */

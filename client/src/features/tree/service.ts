@@ -6,6 +6,7 @@ import type {
   ChartType,
   ChartTypeInput,
   ChartTypeSummary,
+  LinkedNodeRef,
   TreeNode,
   TreeNodeInput,
 } from './types';
@@ -146,6 +147,18 @@ export const chartService = {
     const response = await api.put<TreeNode>(
       `/charts/${chartId}/nodes/${nodeId}/partner`,
       { partnerId },
+    );
+    return response.data;
+  },
+
+  setNodeLink: async (
+    chartId: string,
+    nodeId: string,
+    ref: LinkedNodeRef | null,
+  ): Promise<TreeNode> => {
+    const response = await api.put<TreeNode>(
+      `/charts/${chartId}/nodes/${nodeId}/link`,
+      { targetChartId: ref?.chartId ?? null, targetNodeId: ref?.nodeId ?? null },
     );
     return response.data;
   },

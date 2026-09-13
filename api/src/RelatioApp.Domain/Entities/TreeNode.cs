@@ -33,6 +33,14 @@ public class TreeNode : BaseEntity
     /// <summary>Relationship type slug this node was placed with (null for legacy/manual).</summary>
     public string? RelationshipTypeId { get; set; }
 
+    /// <summary>
+    /// Navigation-only reference to a node in another chart. Independent data —
+    /// never synced with the target node beyond the reciprocal link id.
+    /// </summary>
+    public Guid? LinkedChartId { get; set; }
+
+    public Guid? LinkedNodeId { get; set; }
+
     public string Notes { get; set; } = string.Empty;
 
     public string? PhotoUrl { get; set; }

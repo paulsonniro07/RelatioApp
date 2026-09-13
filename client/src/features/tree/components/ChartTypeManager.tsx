@@ -23,6 +23,7 @@ interface Draft {
   id: string | null;
   name: string;
   relationships: RelationshipTypeDef[];
+  usesLevels: boolean;
 }
 
 function toDraft(chartType: ChartType): Draft {
@@ -30,6 +31,7 @@ function toDraft(chartType: ChartType): Draft {
     id: chartType.id,
     name: chartType.name,
     relationships: chartType.relationships.map((def) => ({ ...def })),
+    usesLevels: chartType.usesLevels,
   };
 }
 
@@ -57,15 +59,19 @@ export function ChartTypeManager({ open, startNew = false, onClose }: ChartTypeM
     setError('');
     setRelEditing(null);
     if (startNew) {
-      setDraft({ id: null, name: '', relationships: [] });
+      setDraft({ id: null, name: '', relationships: [], usesLevels: false });
     } else {
       const source = activeChartType ?? chartTypes[0] ?? null;
-      setDraft(source ? toDraft(source) : { id: null, name: '', relationships: [] });
+      setDraft(
+        source
+          ? toDraft(source)
+          : { id: null, name: '', relationships: [], usesLevels: false },
+      );
     }
   }, [open, startNew, activeChartType, chartTypes]);
 
   const startNewDraft = () =>
-    setDraft({ id: null, name: '', relationships: [] });
+    setDraft({ id: null, name: '', relationships: [], usesLevels: false });
 
   const duplicate = (source: ChartType) => {
     setDraft({
@@ -75,6 +81,7 @@ export function ChartTypeManager({ open, startNew = false, onClose }: ChartTypeM
         ...def,
         id: `${def.id}-copy`,
       })),
+      usesLevels: source.usesLevels,
     });
     setRelEditing(null);
   };
@@ -110,7 +117,11 @@ export function ChartTypeManager({ open, startNew = false, onClose }: ChartTypeM
     }
     setError('');
     setSaving(true);
-    const input: ChartTypeInput = { name, relationships: draft.relationships };
+    const input: ChartTypeInput = {
+      name,
+      relationships: draft.relationships,
+      usesLevels: draft.usesLevels,
+    };
     try {
       if (draft.id) {
         await updateChartType(draft.id, input);
@@ -222,6 +233,20 @@ export function ChartTypeManager({ open, startNew = false, onClose }: ChartTypeM
                 error={error}
                 placeholder="e.g. Clan, D&D Party, Book Club"
               />
+
+              <label className="flex items-center gap-2 text-sm text-gray-700">
+                <input
+                  type="checkbox"
+                  checked={draft.usesLevels}
+                  onChange={(event) =>
+                    setDraft((current) =>
+                      current ? { ...current, usesLevels: event.target.checked } : current,
+                    )
+                  }
+                  className="h-4 w-4 rounded border-gray-300"
+                />
+                Show a manual “Rank / tier” field and legend
+              </label>
 
               <div>
                 <div className="mb-2 flex items-center justify-between">

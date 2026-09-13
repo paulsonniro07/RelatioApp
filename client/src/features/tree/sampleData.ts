@@ -20,6 +20,7 @@ function node(
     level,
     role,
     relationshipTypeId: null,
+    linkedNodeRef: null,
     notes,
     photoUrl: null,
     positionX: 0,

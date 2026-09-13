@@ -8,6 +8,14 @@ export const VERTICAL_GAP = 200;
 /** Gap between sibling cards on the same row (1.7x the previous 36px). */
 export const HORIZONTAL_GAP = 60;
 export const LAYOUT_MARGIN = 90;
+/**
+ * Above this many children under one parent, the row below gets extra vertical
+ * room so a wide fan has space to separate. At or below it, the original gap is
+ * used unchanged (keeps the 2–3 child case identical).
+ */
+const FAN_THRESHOLD = 3;
+/** Extra vertical room added per child beyond FAN_THRESHOLD. */
+const EXTRA_VERTICAL_PER_CHILD = 24;
 
 /**
  * Computes the hierarchy depth of every node (root = 0, its children = 1, ...).
@@ -85,12 +93,33 @@ export function computeAutoLayout(
     siblings.sort((a, b) => a.name.localeCompare(b.name));
   }
 
+  // Give rows with a wide fan-out more vertical room so the connector lines have
+  // space to separate before reaching the children. The threshold keeps small
+  // fans (≤ FAN_THRESHOLD) on the original fixed spacing.
+  const maxFanPerDepth = new Map<number, number>();
+  for (const [parentId, children] of childrenOf) {
+    const parentDepth = depths.get(parentId) ?? 0;
+    maxFanPerDepth.set(
+      parentDepth,
+      Math.max(maxFanPerDepth.get(parentDepth) ?? 0, children.length),
+    );
+  }
+  const maxDepth = depths.size > 0 ? Math.max(...depths.values()) : 0;
+  const rowY: number[] = [0];
+  for (let depth = 1; depth <= maxDepth; depth += 1) {
+    const fan = maxFanPerDepth.get(depth - 1) ?? 0;
+    const extra =
+      fan > FAN_THRESHOLD ? (fan - FAN_THRESHOLD) * EXTRA_VERTICAL_PER_CHILD : 0;
+    rowY[depth] = rowY[depth - 1] + verticalGap + extra;
+  }
+  const yForDepth = (depth: number) => rowY[depth] ?? depth * verticalGap;
+
   const positions = new Map<string, { x: number; y: number }>();
   let cursorX = 0;
 
   function place(node: TreeNode): number {
     const children = childrenOf.get(node.id) ?? [];
-    const y = (depths.get(node.id) ?? 0) * verticalGap;
+    const y = yForDepth(depths.get(node.id) ?? 0);
     if (children.length === 0) {
       positions.set(node.id, { x: cursorX, y });
       cursorX += NODE_WIDTH + horizontalGap;

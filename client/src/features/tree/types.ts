@@ -31,6 +31,8 @@ export interface ChartType {
   id: string;
   name: string;
   relationships: RelationshipTypeDef[];
+  /** Whether this chart type exposes the manual "Rank / tier" field + legend. */
+  usesLevels: boolean;
   /** True for the seeded starter presets — used only to keep examples available. */
   isExample: boolean;
   createdAt: string;
@@ -46,7 +48,15 @@ export interface ChartTypeSummary {
 export interface ChartTypeInput {
   name: string;
   relationships: RelationshipTypeDef[];
+  /** Defaults to false when omitted. */
+  usesLevels?: boolean;
   isExample?: boolean;
+}
+
+/** A navigation-only reference to a node in another chart. */
+export interface LinkedNodeRef {
+  chartId: string;
+  nodeId: string;
 }
 
 export interface TreeNode {
@@ -63,6 +73,8 @@ export interface TreeNode {
   role: string;
   /** Relationship type this node was placed with (null for legacy/manual). */
   relationshipTypeId: string | null;
+  /** Cross-chart navigation link. Independent data — never synced. */
+  linkedNodeRef: LinkedNodeRef | null;
   notes: string;
   photoUrl: string | null;
   positionX: number;

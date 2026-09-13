@@ -24,6 +24,7 @@ import { getErrorMessage } from '@/lib/errors';
 import { ChartPicker } from '@/features/tree/components/ChartPicker';
 import { ChartTypeManager } from '@/features/tree/components/ChartTypeManager';
 import { LevelLegend } from '@/features/tree/components/LevelLegend';
+import { LinkNodeDialog } from '@/features/tree/components/LinkNodeDialog';
 import { NodeForm, type NodeFormSubmitOptions } from '@/features/tree/components/NodeForm';
 import { TreeCanvas } from '@/features/tree/components/TreeCanvas';
 import {
@@ -48,6 +49,7 @@ const EMPTY_CHART_TYPE: ChartType = {
   id: '',
   name: '',
   relationships: [],
+  usesLevels: false,
   isExample: false,
   createdAt: '',
   updatedAt: '',
@@ -56,11 +58,14 @@ const EMPTY_CHART_TYPE: ChartType = {
 export function TreeChartPage() {
   const {
     chart,
+    charts,
     chartTypes,
     activeChartType,
+    focusNodeId,
     loading,
     error,
     reload,
+    selectChart,
     addNode,
     updateNode,
     setParent,
@@ -94,15 +99,33 @@ export function TreeChartPage() {
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [deleteSelectedOpen, setDeleteSelectedOpen] = useState(false);
   const [resetOpen, setResetOpen] = useState(false);
+  const [linkNodeTarget, setLinkNodeTarget] = useState<TreeNode | null>(null);
 
-  // Leave selection mode whenever the active chart changes.
+  // Leave selection mode whenever the active chart changes; if the store set a
+  // focus node (arriving via a cross-chart link), highlight it instead.
   useEffect(() => {
-    setSelectedId(null);
+    setSelectedId(focusNodeId);
     setSelectedIds(new Set());
     setMultiSelect(false);
-  }, [chart?.id]);
+  }, [chart?.id, focusNodeId]);
 
   const effectiveChartType = activeChartType ?? EMPTY_CHART_TYPE;
+
+  const chartNameFor = (chartId: string): string | null =>
+    charts.find((c) => c.id === chartId)?.name ?? null;
+
+  const handleNavigateLink = async (node: TreeNode) => {
+    const ref = node.linkedNodeRef;
+    if (!ref) return;
+    try {
+      const target = await selectChart(ref.chartId, ref.nodeId);
+      if (!target.nodes.some((n) => n.id === ref.nodeId)) {
+        toastError('Linked node no longer exists');
+      }
+    } catch {
+      toastError('Linked chart no longer exists');
+    }
+  };
 
   const openAdd = () => {
     setEditingNode(null);
@@ -462,7 +485,7 @@ export function TreeChartPage() {
             </button>
           </div>
         </div>
-        <LevelLegend nodes={chart.nodes} />
+        {effectiveChartType.usesLevels && <LevelLegend nodes={chart.nodes} />}
       </header>
 
       <main className="relative min-h-0 flex-1">
@@ -478,6 +501,10 @@ export function TreeChartPage() {
           onEdit={openEdit}
           onDelete={setDeleteTarget}
           onRename={handleRename}
+          chartNameFor={chartNameFor}
+          onOpenLink={setLinkNodeTarget}
+          onNavigateLink={(node) => void handleNavigateLink(node)}
+          focusNodeId={focusNodeId}
         />
         {multiSelect && (
           <div className="pointer-events-none absolute inset-x-0 bottom-4 z-30 flex justify-center px-4">
@@ -645,6 +672,12 @@ export function TreeChartPage() {
         open={chartTypeManagerOpen}
         startNew={chartTypeManagerNew}
         onClose={() => setChartTypeManagerOpen(false)}
+      />
+
+      <LinkNodeDialog
+        open={linkNodeTarget !== null}
+        node={linkNodeTarget}
+        onClose={() => setLinkNodeTarget(null)}
       />
 
       <AppearancePanel open={appearanceOpen} onClose={() => setAppearanceOpen(false)} />

@@ -14,6 +14,7 @@ public class ChartTypeConfiguration : IEntityTypeConfiguration<ChartType>
         builder.HasKey(ct => ct.Id);
 
         builder.Property(ct => ct.Name).HasMaxLength(200).IsRequired();
+        builder.Property(ct => ct.UsesLevels).HasDefaultValue(false);
         builder.Property(ct => ct.IsExample).HasDefaultValue(false);
 
         builder.HasIndex(ct => ct.IsDeleted);
