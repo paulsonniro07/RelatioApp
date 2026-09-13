@@ -4,6 +4,7 @@ import {
   BriefcaseIcon,
   CheckIcon,
   HeartIcon,
+  LinkIcon,
   NoteIcon,
   PencilIcon,
   StarIcon,
@@ -34,6 +35,14 @@ interface TreeNodeCardProps {
   onEdit?: () => void;
   onDelete?: () => void;
   onRename?: (name: string) => void;
+  /**
+   * Cross-chart link UI. `undefined` hides all link UI (used by the export
+   * stage so badges never appear in the PNG). `null` = no link yet. An object
+   * = linked; `chartName` is null when the target chart is gone.
+   */
+  linkInfo?: { chartName: string | null } | null;
+  onOpenLink?: () => void;
+  onNavigateLink?: () => void;
 }
 
 /** Small prefix icon for the role/relationship line, per persona. */
@@ -57,6 +66,9 @@ export function TreeNodeCard({
   onEdit,
   onDelete,
   onRename,
+  linkInfo,
+  onOpenLink,
+  onNavigateLink,
 }: TreeNodeCardProps) {
   const { theme } = useTheme();
   const [hovered, setHovered] = useState(false);
@@ -235,6 +247,22 @@ export function TreeNodeCard({
           </span>
         ) : (
           <>
+            {linkInfo !== undefined && onOpenLink && (
+              <button
+                type="button"
+                aria-label={
+                  linkInfo ? `Change link for ${node.name}` : `Link ${node.name} to another chart`
+                }
+                title={linkInfo ? 'Change or remove link' : 'Link to another chart'}
+                onClick={(event) => {
+                  event.stopPropagation();
+                  onOpenLink();
+                }}
+                className="flex h-8 w-8 items-center justify-center rounded-full text-[var(--text-muted)] transition-colors hover:bg-black/5 hover:text-[var(--text-primary)]"
+              >
+                <LinkIcon className="h-4 w-4" />
+              </button>
+            )}
             <button
               type="button"
               aria-label={`Edit ${node.name}`}
@@ -260,6 +288,24 @@ export function TreeNodeCard({
           </>
         )}
       </div>
+
+      {linkInfo && onNavigateLink && (
+        <button
+          type="button"
+          title={linkInfo.chartName ? `Also in: ${linkInfo.chartName}` : 'Linked chart no longer exists'}
+          aria-label={
+            linkInfo.chartName ? `Go to ${linkInfo.chartName}` : 'Linked chart no longer exists'
+          }
+          onClick={(event) => {
+            event.stopPropagation();
+            onNavigateLink();
+          }}
+          className="absolute bottom-1 right-1 z-10 flex h-6 w-6 items-center justify-center rounded-full shadow-sm transition-transform hover:scale-110"
+          style={{ backgroundColor: theme.accent, color: theme.accentText }}
+        >
+          <LinkIcon className="h-3.5 w-3.5" />
+        </button>
+      )}
     </div>
   );
 }

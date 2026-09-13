@@ -4,6 +4,7 @@ import type {
   ChartSummary,
   ChartType,
   ChartTypeInput,
+  LinkedNodeRef,
   TreeNode,
   TreeNodeInput,
 } from '../types';
@@ -55,6 +56,14 @@ export interface TreeDataSource {
     nodeId: string,
     partnerId: string | null,
   ): Promise<TreeNode>;
+
+  /** Sets or clears a node's cross-chart navigation link. */
+  setNodeLink(
+    chartId: string,
+    nodeId: string,
+    ref: LinkedNodeRef | null,
+  ): Promise<TreeNode>;
+
   uploadNodePhoto(chartId: string, nodeId: string, file: File): Promise<TreeNode>;
   deleteNodePhoto(chartId: string, nodeId: string): Promise<TreeNode>;
 

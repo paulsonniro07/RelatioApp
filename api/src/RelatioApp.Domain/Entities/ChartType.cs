@@ -11,6 +11,9 @@ public class ChartType : BaseEntity
 {
     public string Name { get; set; } = string.Empty;
 
+    /// <summary>Whether this chart type exposes the manual "Rank / tier" field + legend.</summary>
+    public bool UsesLevels { get; set; }
+
     /// <summary>Marker for the seeded starter presets (kept available on first run).</summary>
     public bool IsExample { get; set; }
 

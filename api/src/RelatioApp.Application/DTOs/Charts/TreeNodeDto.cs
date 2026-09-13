@@ -10,6 +10,7 @@ public class TreeNodeDto
     public string Level { get; set; } = string.Empty;
     public string Role { get; set; } = string.Empty;
     public string? RelationshipTypeId { get; set; }
+    public LinkedNodeRefDto? LinkedNodeRef { get; set; }
     public string Notes { get; set; } = string.Empty;
     public string? PhotoUrl { get; set; }
     public double PositionX { get; set; }

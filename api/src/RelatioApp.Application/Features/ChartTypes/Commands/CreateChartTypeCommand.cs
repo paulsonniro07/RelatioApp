@@ -33,6 +33,7 @@ public class CreateChartTypeHandler : IRequestHandler<CreateChartTypeCommand, Ch
         var chartType = new ChartType
         {
             Name = name,
+            UsesLevels = request.Input.UsesLevels,
             IsExample = request.Input.IsExample,
             Relationships = ChartTypeRelationshipMapper.Build(request.Input.Relationships),
         };

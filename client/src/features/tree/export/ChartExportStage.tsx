@@ -9,8 +9,13 @@ import {
 import { toPng } from 'html-to-image';
 
 import { TreeNodeCard } from '@/features/tree/components/TreeNodeCard';
-import { resolvePartnerRelationship } from '@/features/tree/chartTypes';
-import { computeEdges, parentEdgePath, partnerEdgePath } from '@/features/tree/edges';
+import { resolveEdgeStyle } from '@/features/tree/chartTypes';
+import {
+  computeEdges,
+  parentEdgeLabelPoint,
+  parentEdgePath,
+  partnerEdgePath,
+} from '@/features/tree/edges';
 import {
   computeBounds,
   computeDepths,
@@ -84,6 +89,23 @@ export const ChartExportStage = forwardRef<ChartExportHandle, ChartExportStagePr
       return counts;
     }, [nodes]);
 
+    /** Left-to-right index of each node among its siblings (for staggered labels). */
+    const siblingIndex = useMemo(() => {
+      const groups = new Map<string, typeof nodes>();
+      for (const n of nodes) {
+        if (!n.parentId) continue;
+        const list = groups.get(n.parentId) ?? [];
+        list.push(n);
+        groups.set(n.parentId, list);
+      }
+      const map = new Map<string, number>();
+      for (const list of groups.values()) {
+        list.sort((a, b) => a.positionX - b.positionX);
+        list.forEach((n, index) => map.set(n.id, index));
+      }
+      return map;
+    }, [nodes]);
+
     const personas = useMemo(() => {
       const map = new Map<string, RelationshipType>();
       for (const n of nodes) {
@@ -124,8 +146,7 @@ export const ChartExportStage = forwardRef<ChartExportHandle, ChartExportStagePr
             if (edge.kind === 'partner') {
               const { path, midX, midY } = partnerEdgePath(from, to, offsetX, offsetY);
               const spouse = theme.spouseConnectorColor ?? theme.connectorColor;
-              const partnerDef = resolvePartnerRelationship(chartType, from, to);
-              const showHeart = partnerDef?.icon === 'heart';
+              const style = resolveEdgeStyle(chartType, edge.kind, from, to);
               return (
                 <g key={`${edge.fromId}->${edge.toId}`}>
                   <path
@@ -133,9 +154,9 @@ export const ChartExportStage = forwardRef<ChartExportHandle, ChartExportStagePr
                     fill="none"
                     stroke={spouse}
                     strokeWidth={theme.connectorWidth}
-                    strokeDasharray="5 4"
+                    strokeDasharray={style.dashed ? '5 4' : undefined}
                   />
-                  {showHeart && (
+                  {style.showHeart && (
                     <g
                       transform={`translate(${midX} ${midY}) scale(0.55) translate(-12 -12)`}
                       pointerEvents="none"
@@ -150,23 +171,38 @@ export const ChartExportStage = forwardRef<ChartExportHandle, ChartExportStagePr
                     fontSize={10}
                     fill={theme.textSecondary}
                   >
-                    {partnerDef?.label ?? 'Partner'}
+                    {style.label || 'Partner'}
                   </text>
                 </g>
               );
             }
-            const midX = (from.positionX + to.positionX) / 2 + offsetX;
-            const midY = (from.positionY + to.positionY) / 2 + offsetY;
+            const style = resolveEdgeStyle(chartType, edge.kind, from, to);
+            const fanCount = childCount.get(edge.fromId) ?? 1;
+            const childIndex = siblingIndex.get(edge.toId) ?? 0;
+            const labelPoint = parentEdgeLabelPoint(
+              from,
+              to,
+              offsetX,
+              offsetY,
+              childIndex,
+              fanCount,
+            );
             return (
               <g key={`${edge.fromId}->${edge.toId}`}>
                 <path
-                  d={parentEdgePath(from, to, offsetX, offsetY)}
+                  d={parentEdgePath(from, to, offsetX, offsetY, fanCount)}
                   fill="none"
                   stroke={theme.connectorColor}
                   strokeWidth={theme.connectorWidth}
                 />
-                <text x={midX} y={midY - 12} textAnchor="middle" fontSize={10} fill={theme.textSecondary}>
-                  {childLabel}
+                <text
+                  x={labelPoint.x}
+                  y={labelPoint.y}
+                  textAnchor="middle"
+                  fontSize={10}
+                  fill={theme.textSecondary}
+                >
+                  {style.label || childLabel}
                 </text>
               </g>
             );

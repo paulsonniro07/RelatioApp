@@ -11,12 +11,14 @@ import {
 import { STARTER_CHART_TYPES, inferRelationshipId } from './chartTypes';
 import { computeAutoLayout, computeDepths } from './layout';
 import { createSampleChart } from './sampleData';
+import { resolveApiPhotoUrl } from '@/lib/api';
 import { treeDataSource } from './storage';
 import type {
   Chart,
   ChartSummary,
   ChartType,
   ChartTypeInput,
+  LinkedNodeRef,
   TreeNode,
   TreeNodeInput,
 } from './types';
@@ -25,6 +27,8 @@ export interface TreeChartState {
   charts: ChartSummary[];
   chartTypes: ChartType[];
   chart: Chart | null;
+  /** Node to select+highlight after a navigation link jumps charts. */
+  focusNodeId: string | null;
   loading: boolean;
   error: string | null;
 }
@@ -50,6 +54,30 @@ export function wouldCreateCycle(nodes: TreeNode[], id: string, parentId: string
 
 function replaceNode(nodes: TreeNode[], updated: TreeNode): TreeNode[] {
   return nodes.map((n) => (n.id === updated.id ? updated : n));
+}
+
+/**
+ * Clears the reciprocal side of a cross-chart link if it still points back at
+ * the given owner node. Silently ignores a target that has since been deleted.
+ */
+async function clearRemoteLink(
+  ref: LinkedNodeRef,
+  ownerChartId: string,
+  ownerNodeId: string,
+): Promise<void> {
+  try {
+    const remote = await treeDataSource.getChart(ref.chartId);
+    const remoteNode = remote.nodes.find((n) => n.id === ref.nodeId);
+    if (
+      remoteNode?.linkedNodeRef &&
+      remoteNode.linkedNodeRef.chartId === ownerChartId &&
+      remoteNode.linkedNodeRef.nodeId === ownerNodeId
+    ) {
+      await treeDataSource.setNodeLink(ref.chartId, ref.nodeId, null);
+    }
+  } catch {
+    // Target chart/node no longer exists — nothing to clear.
+  }
 }
 
 function toSummary(chart: Chart): ChartSummary {
@@ -161,13 +189,22 @@ async function seedExamples(
   try {
     for (const kind of ['org', 'family'] as const) {
       const wantedName = kind === 'family' ? 'Family' : 'Organization';
-      const chartType =
-        chartTypes.find((ct) => ct.name.toLowerCase() === wantedName.toLowerCase()) ??
-        chartTypes[0];
+      const chartType = chartTypes.find(
+        (ct) => ct.name.toLowerCase() === wantedName.toLowerCase(),
+      );
+      // Only seed a kind when its starter chart type exists — never fall back to
+      // an unrelated type (that would create a mislabelled duplicate).
       if (!chartType) continue;
 
+      const sampleBaseName = createSampleChart(kind).name.replace(/\s*\(\d+\)$/, '');
+      // An example already exists if a non-deleted example matches either the
+      // target chart type OR the sample's base name (covers legacy rows whose
+      // chartTypeId is missing/mismatched).
       const hasExample = [...charts, ...created].some(
-        (c) => c.isExample && c.chartTypeId === chartType.id,
+        (c) =>
+          c.isExample &&
+          (c.chartTypeId === chartType.id ||
+            c.name.replace(/\s*\(\d+\)$/, '') === sampleBaseName),
       );
       if (hasExample) continue;
 
@@ -180,11 +217,37 @@ async function seedExamples(
   return created.length > 0 ? [...created, ...charts] : charts;
 }
 
+/**
+ * Serializes the full workspace load (chart types + example seeding + charts).
+ *
+ * Seeding is a read-then-write sequence, so two overlapping loads (React
+ * StrictMode double-invoked effects, rapid refreshes, an in-flight reload) could
+ * both see "no example" and each create one. Sharing the in-flight promise
+ * guarantees the workspace is seeded at most once per page load.
+ */
+let workspaceLoad:
+  | Promise<{ charts: ChartSummary[]; chartTypes: ChartType[] }>
+  | null = null;
+
+function loadWorkspace(): Promise<{ charts: ChartSummary[]; chartTypes: ChartType[] }> {
+  if (!workspaceLoad) {
+    workspaceLoad = (async () => {
+      const chartTypes = await ensureChartTypes();
+      const charts = await seedExamples(await treeDataSource.getCharts(), chartTypes);
+      return { charts, chartTypes };
+    })().finally(() => {
+      workspaceLoad = null;
+    });
+  }
+  return workspaceLoad;
+}
+
 export interface TreeChartContextValue extends TreeChartState {
   /** Chart type driving the active chart's relationship vocabulary. */
   activeChartType: ChartType | null;
   reload: () => Promise<void>;
-  selectChart: (chartId: string) => Promise<void>;
+  selectChart: (chartId: string, focusNodeId?: string | null) => Promise<Chart>;
+  loadChartNodes: (chartId: string) => Promise<TreeNode[]>;
   createChart: (name: string, chartTypeId: string) => Promise<void>;
   renameChart: (chartId: string, name: string) => Promise<void>;
   setChartType: (chartTypeId: string) => Promise<void>;
@@ -192,6 +255,15 @@ export interface TreeChartContextValue extends TreeChartState {
   createChartType: (input: ChartTypeInput) => Promise<ChartType>;
   updateChartType: (chartTypeId: string, input: ChartTypeInput) => Promise<ChartType>;
   deleteChartType: (chartTypeId: string) => Promise<void>;
+  /** Link this node to a node in another chart (sets both sides). */
+  linkNode: (nodeId: string, targetChartId: string, targetNodeId: string) => Promise<void>;
+  /** Remove this node's cross-chart link (clears both sides). */
+  unlinkNode: (nodeId: string) => Promise<void>;
+  /**
+   * Adds a NEW node to this chart mirroring the linked node, and links the new
+   * node to the target. The two nodes stay independent afterward.
+   */
+  copyLinkedNode: (nodeId: string) => Promise<void>;
   addNode: (input: TreeNodeInput) => Promise<TreeNode>;
   updateNode: (id: string, patch: TreeNodePatch) => Promise<void>;
   setPosition: (id: string, x: number, y: number) => Promise<void>;
@@ -212,6 +284,7 @@ export function TreeChartProvider({ children }: { children: ReactNode }) {
     charts: [],
     chartTypes: [],
     chart: null,
+    focusNodeId: null,
     loading: true,
     error: null,
   });
@@ -230,8 +303,7 @@ export function TreeChartProvider({ children }: { children: ReactNode }) {
   const reload = useCallback(async () => {
     setState((s) => ({ ...s, loading: true, error: null }));
     try {
-      const chartTypes = await ensureChartTypes();
-      const charts = await seedExamples(await treeDataSource.getCharts(), chartTypes);
+      const { charts, chartTypes } = await loadWorkspace();
       const current = stateRef.current.chart;
       let chart: Chart | null = null;
       if (current) {
@@ -258,10 +330,153 @@ export function TreeChartProvider({ children }: { children: ReactNode }) {
     void reload();
   }, [reload]);
 
-  const selectChart = useCallback(async (chartId: string) => {
+  const selectChart = useCallback(
+    async (chartId: string, focusNodeId: string | null = null): Promise<Chart> => {
+      const chart = await treeDataSource.getChart(chartId);
+      setState((s) => ({ ...s, chart, focusNodeId, error: null }));
+      return chart;
+    },
+    [],
+  );
+
+  const loadChartNodes = useCallback(async (chartId: string): Promise<TreeNode[]> => {
     const chart = await treeDataSource.getChart(chartId);
-    setState((s) => ({ ...s, chart, error: null }));
+    return chart.nodes;
   }, []);
+
+  const linkNode = useCallback(
+    async (nodeId: string, targetChartId: string, targetNodeId: string) => {
+      const chart = requireChart();
+      const node = chart.nodes.find((n) => n.id === nodeId);
+      if (!node) throw new Error('Node not found');
+
+      // Re-linking: clear this node's previous link (both sides) first.
+      if (node.linkedNodeRef) {
+        await clearRemoteLink(node.linkedNodeRef, chart.id, nodeId);
+      }
+
+      // Clear the target's previous link (both sides) too.
+      const targetChart = await treeDataSource.getChart(targetChartId);
+      const targetNode = targetChart.nodes.find((n) => n.id === targetNodeId);
+      if (!targetNode) throw new Error('Target node not found');
+      if (targetNode.linkedNodeRef) {
+        await clearRemoteLink(targetNode.linkedNodeRef, targetChartId, targetNodeId);
+      }
+
+      const updated = await treeDataSource.setNodeLink(chart.id, nodeId, {
+        chartId: targetChartId,
+        nodeId: targetNodeId,
+      });
+      await treeDataSource.setNodeLink(targetChartId, targetNodeId, {
+        chartId: chart.id,
+        nodeId,
+      });
+
+      setState((s) =>
+        s.chart
+          ? { ...s, chart: { ...s.chart, nodes: replaceNode(s.chart.nodes, updated) } }
+          : s,
+      );
+    },
+    [requireChart],
+  );
+
+  const unlinkNode = useCallback(
+    async (nodeId: string) => {
+      const chart = requireChart();
+      const node = chart.nodes.find((n) => n.id === nodeId);
+      if (!node) return;
+      if (node.linkedNodeRef) {
+        await clearRemoteLink(node.linkedNodeRef, chart.id, nodeId);
+      }
+      const updated = await treeDataSource.setNodeLink(chart.id, nodeId, null);
+      setState((s) =>
+        s.chart
+          ? { ...s, chart: { ...s.chart, nodes: replaceNode(s.chart.nodes, updated) } }
+          : s,
+      );
+    },
+    [requireChart],
+  );
+
+  const copyLinkedNode = useCallback(
+    async (nodeId: string) => {
+      const chart = requireChart();
+      const source = chart.nodes.find((n) => n.id === nodeId);
+      const ref = source?.linkedNodeRef;
+      if (!source || !ref) throw new Error('This node has no link to copy from');
+
+      const targetChart = await treeDataSource.getChart(ref.chartId);
+      const target = targetChart.nodes.find((n) => n.id === ref.nodeId);
+      if (!target) throw new Error('Linked node no longer exists');
+
+      const activeType =
+        stateRef.current.chartTypes.find((ct) => ct.id === chart.chartTypeId) ?? null;
+
+      // Add a NEW node to this chart that mirrors the linked node. It joins the
+      // same generation as the node we copied from.
+      const position = getInsertPosition(chart.nodes, source.parentId);
+      const created = await treeDataSource.createNode(chart.id, {
+        name: target.name,
+        parentId: source.parentId,
+        partnerId: null,
+        level: activeType?.usesLevels ? target.level : '',
+        role: target.role,
+        relationshipTypeId: activeType
+          ? inferRelationshipId(activeType, target.role)
+          : null,
+        notes: target.notes,
+        photoUrl: null,
+        positionX: position.x,
+        positionY: position.y,
+      });
+
+      // Point the link at the new copy (v1 allows one link per node, so the
+      // original source node is unlinked on both sides).
+      if (target.linkedNodeRef) {
+        await clearRemoteLink(target.linkedNodeRef, ref.chartId, ref.nodeId);
+      }
+      await treeDataSource.setNodeLink(chart.id, created.id, {
+        chartId: ref.chartId,
+        nodeId: ref.nodeId,
+      });
+      await treeDataSource.setNodeLink(ref.chartId, ref.nodeId, {
+        chartId: chart.id,
+        nodeId: created.id,
+      });
+
+      let finalNode: TreeNode = {
+        ...created,
+        linkedNodeRef: { chartId: ref.chartId, nodeId: ref.nodeId },
+      };
+
+      // Copy the photo as a fresh upload (never share the stored file).
+      const photoUrl = resolveApiPhotoUrl(target.photoUrl);
+      if (photoUrl) {
+        try {
+          const response = await fetch(photoUrl);
+          if (response.ok) {
+            const blob = await response.blob();
+            const file = new File([blob], 'linked-photo', {
+              type: blob.type || 'image/jpeg',
+            });
+            finalNode = await treeDataSource.uploadNodePhoto(chart.id, created.id, file);
+          }
+        } catch {
+          // Photo copy is best-effort; the node is already created with text.
+        }
+      }
+
+      setState((s) => {
+        if (!s.chart) return s;
+        const nodes = s.chart.nodes
+          .map((n) => (n.id === nodeId ? { ...n, linkedNodeRef: null } : n))
+          .concat(finalNode);
+        return { ...s, chart: { ...s.chart, nodes } };
+      });
+    },
+    [requireChart],
+  );
 
   const createChart = useCallback(async (name: string, chartTypeId: string) => {
     const chart = await treeDataSource.createChart({ name, chartTypeId });
@@ -543,6 +758,10 @@ export function TreeChartProvider({ children }: { children: ReactNode }) {
       activeChartType,
       reload,
       selectChart,
+      loadChartNodes,
+      linkNode,
+      unlinkNode,
+      copyLinkedNode,
       createChart,
       renameChart,
       setChartType,
@@ -567,6 +786,10 @@ export function TreeChartProvider({ children }: { children: ReactNode }) {
       activeChartType,
       reload,
       selectChart,
+      loadChartNodes,
+      linkNode,
+      unlinkNode,
+      copyLinkedNode,
       createChart,
       renameChart,
       setChartType,

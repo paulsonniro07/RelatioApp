@@ -4,8 +4,11 @@ import { Button } from '@/components/ui/Button';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { useToast } from '@/components/ui/Toast';
 import { findDropTarget, type DropTargetInfo } from '@/features/tree/drag';
-import { computeEdges, parentEdgePath, partnerEdgePath } from '@/features/tree/edges';
-import { chartTypeAllowsPartners, resolvePartnerRelationship } from '@/features/tree/chartTypes';
+import { computeEdges, parentEdgeLabelPoint, parentEdgePath, partnerEdgePath } from '@/features/tree/edges';
+import {
+  chartTypeAllowsPartners,
+  resolveEdgeStyle,
+} from '@/features/tree/chartTypes';
 import { computeBounds, computeDepths, LAYOUT_MARGIN, NODE_HEIGHT, NODE_WIDTH } from '@/features/tree/layout';
 import { wouldCreateCycle } from '@/features/tree/store';
 import { usePanZoom } from '@/hooks/usePanZoom';
@@ -54,6 +57,12 @@ interface TreeCanvasProps {
   onEdit: (node: TreeNode) => void;
   onDelete: (node: TreeNode) => void;
   onRename: (id: string, name: string) => void;
+  /** Resolves a chart id to its name for the link badge tooltip. */
+  chartNameFor?: (chartId: string) => string | null;
+  onOpenLink?: (node: TreeNode) => void;
+  onNavigateLink?: (node: TreeNode) => void;
+  /** Node to center when arriving via a cross-chart link. */
+  focusNodeId?: string | null;
 }
 
 export function TreeCanvas({
@@ -68,6 +77,10 @@ export function TreeCanvas({
   onEdit,
   onDelete,
   onRename,
+  chartNameFor,
+  onOpenLink,
+  onNavigateLink,
+  focusNodeId,
 }: TreeCanvasProps) {
   const { setPosition, setParent, setPartner } = useTreeChart();
   const { success: toastSuccess, error: toastError } = useToast();
@@ -103,6 +116,23 @@ export function TreeCanvas({
     return counts;
   }, [nodes]);
 
+  /** Left-to-right index of each node among its siblings (for staggered labels). */
+  const siblingIndex = useMemo(() => {
+    const groups = new Map<string, TreeNode[]>();
+    for (const n of nodes) {
+      if (!n.parentId) continue;
+      const list = groups.get(n.parentId) ?? [];
+      list.push(n);
+      groups.set(n.parentId, list);
+    }
+    const map = new Map<string, number>();
+    for (const list of groups.values()) {
+      list.sort((a, b) => a.positionX - b.positionX);
+      list.forEach((n, index) => map.set(n.id, index));
+    }
+    return map;
+  }, [nodes]);
+
   const personas = useMemo(() => {
     const map = new Map<string, RelationshipType>();
     for (const n of nodes) {
@@ -131,9 +161,24 @@ export function TreeCanvas({
   const contentHeight = nodes.length === 0 ? 0 : Math.ceil(bounds.maxY - bounds.minY) + LAYOUT_MARGIN * 2;
   const nodeSignature = useMemo(() => nodes.map((n) => n.id).sort().join('|'), [nodes]);
 
-  // Fit the chart whenever the set of nodes structurally changes (mount, sample load, add/delete).
+  // Fit the chart whenever the set of nodes structurally changes (mount, sample
+  // load, add/delete). When arriving via a cross-chart link, center that node.
   useEffect(() => {
     if (contentWidth <= 0 || contentHeight <= 0) return;
+    const focusNode = focusNodeId ? nodes.find((n) => n.id === focusNodeId) : null;
+    const el = containerRef.current;
+    if (focusNode && el) {
+      const offsetX = LAYOUT_MARGIN - bounds.minX;
+      const offsetY = LAYOUT_MARGIN - bounds.minY;
+      const cx = focusNode.positionX + offsetX;
+      const cy = focusNode.positionY + offsetY;
+      setTransform({
+        zoom: 1,
+        x: el.clientWidth / 2 - cx,
+        y: el.clientHeight / 2 - cy,
+      });
+      return;
+    }
     fit(contentWidth, contentHeight);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [nodeSignature]);
@@ -386,12 +431,11 @@ export function TreeCanvas({
               drag.toId === edge.toId;
             const edgeActive =
               emphasisIds.has(edge.fromId) || emphasisIds.has(edge.toId);
+            const style = resolveEdgeStyle(chartType, edge.kind, shownFrom, shownTo);
             if (edge.kind === 'partner') {
               const { path, midX, midY } = partnerEdgePath(shownFrom, shownTo, offsetX, offsetY);
               const spouseColor = theme.spouseConnectorColor ?? theme.connectorColor;
-              const partnerDef = resolvePartnerRelationship(chartType, shownFrom, shownTo);
-              const partnerEdgeLabel = partnerDef?.label ?? 'Partner';
-              const showHeart = partnerDef?.icon === 'heart';
+              const edgeLabel = style.label || partnerLabel;
               return (
                 <g key={key}>
                   <path
@@ -399,10 +443,10 @@ export function TreeCanvas({
                     fill="none"
                     stroke={spouseColor}
                     strokeWidth={edgeActive ? 2 : theme.connectorWidth}
-                    strokeDasharray="5 4"
+                    strokeDasharray={style.dashed ? '5 4' : undefined}
                     opacity={isDraggedEdge ? 0.2 : 1}
                   />
-                  {showHeart && (
+                  {style.showHeart && (
                     <g
                       transform={`translate(${midX} ${midY}) scale(${edgeActive ? 0.7 : 0.55}) translate(-12 -12)`}
                       pointerEvents="none"
@@ -422,15 +466,25 @@ export function TreeCanvas({
                     fill={theme.textSecondary}
                     style={{ pointerEvents: 'none', userSelect: 'none' }}
                   >
-                    {partnerEdgeLabel}
+                    {edgeLabel}
                   </text>
                 </g>
               );
             }
+            const fanCount = childCount.get(edge.fromId) ?? 1;
+            const childIndex = siblingIndex.get(edge.toId) ?? 0;
+            const labelPoint = parentEdgeLabelPoint(
+              shownFrom,
+              shownTo,
+              offsetX,
+              offsetY,
+              childIndex,
+              fanCount,
+            );
             return (
               <g key={key}>
                 <path
-                  d={parentEdgePath(shownFrom, shownTo, offsetX, offsetY)}
+                  d={parentEdgePath(shownFrom, shownTo, offsetX, offsetY, fanCount)}
                   fill="none"
                   stroke={
                     edgeActive
@@ -442,14 +496,14 @@ export function TreeCanvas({
                 />
                 {!isDraggedEdge && (
                   <text
-                    x={(shownFrom.positionX + shownTo.positionX) / 2 + offsetX}
-                    y={(shownFrom.positionY + shownTo.positionY) / 2 + offsetY - 12}
+                    x={labelPoint.x}
+                    y={labelPoint.y}
                     textAnchor="middle"
                     fontSize={10}
                     fill={theme.textSecondary}
                     style={{ pointerEvents: 'none', userSelect: 'none' }}
                   >
-                    {childLabel}
+                    {style.label || childLabel}
                   </text>
                 )}
                 {!isDraggedEdge && !selectionMode && (
@@ -589,6 +643,15 @@ export function TreeCanvas({
                 onEdit={() => onEdit(node)}
                 onDelete={() => onDelete(node)}
                 onRename={(name) => onRename(node.id, name)}
+                linkInfo={
+                  chartNameFor
+                    ? node.linkedNodeRef
+                      ? { chartName: chartNameFor(node.linkedNodeRef.chartId) }
+                      : null
+                    : undefined
+                }
+                onOpenLink={onOpenLink ? () => onOpenLink(node) : undefined}
+                onNavigateLink={onNavigateLink ? () => onNavigateLink(node) : undefined}
               />
             </div>
           );

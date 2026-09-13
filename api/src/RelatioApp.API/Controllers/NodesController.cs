@@ -63,6 +63,16 @@ public class NodesController : ControllerBase
             new SetPartnerCommand(chartId, nodeId, request.PartnerId),
             ct));
 
+    [HttpPut("{nodeId:guid}/link")]
+    public async Task<IActionResult> SetLink(
+        Guid chartId,
+        Guid nodeId,
+        [FromBody] SetNodeLinkRequest request,
+        CancellationToken ct)
+        => Ok(await _mediator.Send(
+            new SetNodeLinkCommand(chartId, nodeId, request.TargetChartId, request.TargetNodeId),
+            ct));
+
     [HttpPost("{nodeId:guid}/photo")]
     [RequestSizeLimit(8_000_000)]
     public async Task<IActionResult> UploadPhoto(
@@ -118,5 +128,7 @@ public record SetParentRequest(Guid? ParentId);
 public record SetPositionRequest(double PositionX, double PositionY);
 
 public record SetPartnerRequest(Guid? PartnerId);
+
+public record SetNodeLinkRequest(Guid? TargetChartId, Guid? TargetNodeId);
 
 public record DeleteNodesRequest(List<Guid> NodeIds);

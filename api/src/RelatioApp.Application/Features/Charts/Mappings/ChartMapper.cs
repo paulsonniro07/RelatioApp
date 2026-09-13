@@ -15,6 +15,10 @@ public static class ChartMapper
         Level = node.Level,
         Role = node.RoleOrRelationship,
         RelationshipTypeId = node.RelationshipTypeId,
+        LinkedNodeRef =
+            node.LinkedChartId is Guid linkedChartId && node.LinkedNodeId is Guid linkedNodeId
+                ? new LinkedNodeRefDto { ChartId = linkedChartId, NodeId = linkedNodeId }
+                : null,
         Notes = node.Notes,
         PhotoUrl = node.PhotoUrl,
         PositionX = node.PositionX,
@@ -59,6 +63,7 @@ public static class ChartMapper
     {
         Id = chartType.Id,
         Name = chartType.Name,
+        UsesLevels = chartType.UsesLevels,
         IsExample = chartType.IsExample,
         CreatedAt = chartType.CreatedAt,
         UpdatedAt = chartType.UpdatedAt,
