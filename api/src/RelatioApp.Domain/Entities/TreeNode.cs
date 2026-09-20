@@ -41,6 +41,12 @@ public class TreeNode : BaseEntity
 
     public Guid? LinkedNodeId { get; set; }
 
+    /// <summary>Optional birthday (date only) used by the "Birthday" sort.</summary>
+    public DateOnly? BirthDate { get; set; }
+
+    /// <summary>Manual order within the sibling row (lower = earlier). Null = insertion order.</summary>
+    public int? Sequence { get; set; }
+
     public string Notes { get; set; } = string.Empty;
 
     public string? PhotoUrl { get; set; }

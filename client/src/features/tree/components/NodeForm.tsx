@@ -10,6 +10,7 @@ import {
   findRelationshipDef,
   findRelationshipOption,
   inferRelationshipId,
+  relationshipLabelForValue,
 } from '@/features/tree/chartTypes';
 import { wouldCreateCycle } from '@/features/tree/store';
 import type {
@@ -70,6 +71,8 @@ export function NodeForm({
   const [parentId, setParentId] = useState<string | null>(null);
   const [partnerId, setPartnerId] = useState<string | null>(null);
   const [level, setLevel] = useState('');
+  const [birthDate, setBirthDate] = useState('');
+  const [sequence, setSequence] = useState('');
   const [notes, setNotes] = useState('');
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [saving, setSaving] = useState(false);
@@ -113,6 +116,8 @@ export function NodeForm({
     setParentId(mode === 'edit' ? (source?.parentId ?? null) : null);
     setPartnerId(mode === 'edit' ? (source?.partnerId ?? null) : null);
     setLevel(source?.level ?? '');
+    setBirthDate(source?.birthDate ?? '');
+    setSequence(source?.sequence != null ? String(source.sequence) : '');
     setNotes(source?.notes ?? '');
     setErrors({});
     setSaving(false);
@@ -254,8 +259,16 @@ export function NodeForm({
         resolvedRole = option.label;
         resolvedRelationshipTypeId = option.relationshipId;
       } else {
-        resolvedRole = relationshipValue.trim();
-        resolvedRelationshipTypeId = inferRelationshipId(chartType, resolvedRole);
+        const raw = relationshipValue.trim();
+        if (raw.includes(':')) {
+          // Stale "<relId>:<direction>" key — resolve to its human label so the
+          // internal key is never stored as the card's role.
+          resolvedRole = relationshipLabelForValue(chartType, raw, node?.role ?? '');
+          resolvedRelationshipTypeId = inferRelationshipId(chartType, resolvedRole);
+        } else {
+          resolvedRole = raw;
+          resolvedRelationshipTypeId = inferRelationshipId(chartType, resolvedRole);
+        }
       }
     }
 
@@ -272,6 +285,11 @@ export function NodeForm({
           level: usesLevels ? level.trim() : '',
           role: resolvedRole,
           relationshipTypeId: resolvedRelationshipTypeId,
+          birthDate: birthDate.trim() || null,
+          sequence:
+            sequence.trim() === '' || !Number.isFinite(Number(sequence))
+              ? null
+              : Number(sequence),
           notes: notes.trim(),
           photoUrl: mode === 'edit' ? (node?.photoUrl ?? null) : null,
         },
@@ -374,10 +392,26 @@ export function NodeForm({
                   label="Rank / tier"
                   value={level}
                   onChange={(event) => setLevel(event.target.value)}
-                  hint="Optional grouping band for the legend — e.g. Executive, Management, Staff"
+                  hint="Optional grouping band for the legend - e.g. Executive, Management, Staff"
                   placeholder="e.g. Executive"
                 />
               )}
+              <Input
+                label="Birthday"
+                type="date"
+                value={birthDate}
+                onChange={(event) => setBirthDate(event.target.value)}
+                hint="Optional — used by the Birthday sort order."
+              />
+              <Input
+                label="Sequence"
+                type="number"
+                inputMode="numeric"
+                value={sequence}
+                onChange={(event) => setSequence(event.target.value)}
+                hint="Optional manual order within its row. Lower numbers come first."
+                placeholder="e.g. 1"
+              />
               <div className="space-y-1">
                 <label className="block text-sm font-medium text-gray-700">Photo</label>
                 <div className="flex items-center gap-3">

@@ -18,6 +18,9 @@ public class ChartConfiguration : IEntityTypeConfiguration<Chart>
         // Default false so pre-existing rows get false when the column is added.
         builder.Property(c => c.IsExample).HasDefaultValue(false);
 
+        builder.Property(c => c.SortKey).HasMaxLength(20).HasDefaultValue("name");
+        builder.Property(c => c.SortDir).HasMaxLength(4).HasDefaultValue("asc");
+
         builder.HasIndex(c => c.IsDeleted);
         builder.HasIndex(c => c.ChartTypeId);
 

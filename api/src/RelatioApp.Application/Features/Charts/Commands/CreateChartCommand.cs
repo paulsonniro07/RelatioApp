@@ -45,6 +45,8 @@ public class CreateChartHandler : IRequestHandler<CreateChartCommand, ChartDto>
         {
             Name = trimmedName,
             ChartTypeId = request.Input.ChartTypeId,
+            SortKey = ChartMapper.NormalizeSortKey(request.Input.SortKey),
+            SortDir = ChartMapper.NormalizeSortDir(request.Input.SortDir),
             IsExample = request.Input.IsExample,
         };
         var created = await _repository.CreateAsync(chart, ct);

@@ -59,6 +59,10 @@ export interface LinkedNodeRef {
   nodeId: string;
 }
 
+/** How siblings/roots are ordered when auto-layout runs. */
+export type SortKey = 'name' | 'birthday' | 'sequence' | 'level';
+export type SortDir = 'asc' | 'desc';
+
 export interface TreeNode {
   id: string;
   chartId: string;
@@ -75,6 +79,10 @@ export interface TreeNode {
   relationshipTypeId: string | null;
   /** Cross-chart navigation link. Independent data — never synced. */
   linkedNodeRef: LinkedNodeRef | null;
+  /** Optional birthday (ISO yyyy-MM-dd) used by the "Birthday" sort. */
+  birthDate: string | null;
+  /** Manual order within its sibling row (lower = earlier). Null = use created order. */
+  sequence: number | null;
   notes: string;
   photoUrl: string | null;
   positionX: number;
@@ -90,6 +98,8 @@ export interface TreeNodeInput {
   level: string;
   role: string;
   relationshipTypeId: string | null;
+  birthDate: string | null;
+  sequence: number | null;
   notes: string;
   photoUrl: string | null;
   /** If omitted, the store picks a sensible insert position. */
@@ -114,6 +124,9 @@ export interface Chart {
   name: string;
   /** References a ChartType by id — drives the relationship vocabulary. */
   chartTypeId: string;
+  /** Sibling/root sort applied by Auto layout. */
+  sortKey: SortKey;
+  sortDir: SortDir;
   /** True for the auto-seeded reference charts — the client keeps examples available. */
   isExample: boolean;
   createdAt: string;
@@ -125,6 +138,8 @@ export interface ChartSummary {
   id: string;
   name: string;
   chartTypeId: string;
+  sortKey: SortKey;
+  sortDir: SortDir;
   /** True for the auto-seeded reference charts — the client keeps examples available. */
   isExample: boolean;
   createdAt: string;

@@ -8,11 +8,37 @@ import {
 } from '@/features/tree/chartTypes';
 import type { RelationshipLink, RelationshipTypeDef } from '@/features/tree/types';
 
-const LINK_OPTIONS: Array<{ value: RelationshipLink; label: string }> = [
-  { value: 'parent', label: 'Hierarchy — sets parent / child' },
-  { value: 'partner', label: 'Lateral — links beside (spouse, colleague)' },
-  { value: 'shared-parent', label: 'Shared parent — same generation (sibling)' },
+type Kind = 'hierarchy' | 'side' | 'sibling';
+
+const KIND_OPTIONS: Array<{ value: Kind; label: string; hint: string }> = [
+  {
+    value: 'hierarchy',
+    label: 'Above / Below',
+    hint: 'One card sits above the other — e.g. Captain → Crew member',
+  },
+  {
+    value: 'side',
+    label: 'Side by side',
+    hint: 'Same level, linked laterally — e.g. Spouse, Colleague',
+  },
+  {
+    value: 'sibling',
+    label: 'Same parent (siblings)',
+    hint: 'Share a parent — e.g. Brother / Sister',
+  },
 ];
+
+function kindOf(def: RelationshipTypeDef | undefined): Kind {
+  if (!def) return 'hierarchy';
+  if (def.link === 'shared-parent') return 'sibling';
+  return def.directional ? 'hierarchy' : 'side';
+}
+
+const LINK_BY_KIND: Record<Kind, RelationshipLink> = {
+  hierarchy: 'parent',
+  side: 'partner',
+  sibling: 'shared-parent',
+};
 
 interface RelationshipTypeFormProps {
   initial?: RelationshipTypeDef;
@@ -31,105 +57,127 @@ export function RelationshipTypeForm({
   onCancel,
   saving = false,
 }: RelationshipTypeFormProps) {
-  const [forwardLabel, setForwardLabel] = useState(initial?.forwardLabel ?? '');
-  const [backwardLabel, setBackwardLabel] = useState(initial?.backwardLabel ?? '');
-  const [directional, setDirectional] = useState(initial?.directional ?? true);
-  const [link, setLink] = useState<RelationshipLink>(initial?.link ?? 'parent');
+  const [kind, setKind] = useState<Kind>(kindOf(initial));
+  const [upper, setUpper] = useState(initial?.forwardLabel ?? '');
+  const [lower, setLower] = useState(initial?.backwardLabel ?? '');
+  const [single, setSingle] = useState(
+    initial && kindOf(initial) !== 'hierarchy'
+      ? initial.label || initial.forwardLabel
+      : '',
+  );
   const [icon, setIcon] = useState(initial?.icon ?? 'user');
   const [error, setError] = useState('');
 
   const idsWithoutSelf = existingIds.filter((id) => id !== initial?.id);
 
-  const handleDirectionalChange = (next: boolean) => {
-    setDirectional(next);
-    if (next && link === 'shared-parent') setLink('parent');
-    if (!next && link === 'parent') setLink('partner');
-  };
-
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    const forward = forwardLabel.trim();
-    const backward = backwardLabel.trim();
-    if (!forward && !backward) {
-      setError('Provide at least one label');
-      return;
-    }
-    const resolvedForward = forward || backward;
-    const resolvedBackward = backward || forward;
-    const label =
-      resolvedForward === resolvedBackward
-        ? resolvedForward
-        : `${resolvedForward} / ${resolvedBackward}`;
-    const id = initial?.id ?? relationshipIdFromLabel(label, idsWithoutSelf);
 
+    let forwardLabel: string;
+    let backwardLabel: string;
+    let label: string;
+
+    if (kind === 'hierarchy') {
+      const up = upper.trim();
+      const down = lower.trim();
+      if (!up || !down) {
+        setError('Give both an upper and a lower label');
+        return;
+      }
+      forwardLabel = up;
+      backwardLabel = down;
+      label = up === down ? up : `${up} / ${down}`;
+    } else {
+      const value = single.trim();
+      if (!value) {
+        setError('Give the relationship a label');
+        return;
+      }
+      forwardLabel = value;
+      backwardLabel = value;
+      label = value;
+    }
+
+    const id = initial?.id ?? relationshipIdFromLabel(label, idsWithoutSelf);
     setError('');
     await onSave({
       id,
       label,
-      forwardLabel: resolvedForward,
-      backwardLabel: resolvedBackward,
+      forwardLabel,
+      backwardLabel,
       icon,
-      directional,
-      link,
+      directional: kind === 'hierarchy',
+      link: LINK_BY_KIND[kind],
     });
   };
 
   return (
     <form onSubmit={handleSubmit} className="space-y-3 rounded-md border border-gray-200 bg-gray-50 p-3">
-      <div className="grid grid-cols-2 gap-2">
-        <Input
-          label="From label"
-          value={forwardLabel}
-          autoFocus
-          onChange={(event) => setForwardLabel(event.target.value)}
-          placeholder="e.g. Parent"
-        />
-        <Input
-          label="To label"
-          value={backwardLabel}
-          onChange={(event) => setBackwardLabel(event.target.value)}
-          placeholder="e.g. Child"
-        />
+      <div className="space-y-1">
+        <span className="block text-sm font-medium text-gray-700">How do cards connect?</span>
+        <div className="grid gap-1.5">
+          {KIND_OPTIONS.map((option) => {
+            const active = kind === option.value;
+            return (
+              <button
+                key={option.value}
+                type="button"
+                onClick={() => setKind(option.value)}
+                className={`rounded-md border px-2.5 py-2 text-left transition-colors ${
+                  active
+                    ? 'border-blue-400 bg-blue-50'
+                    : 'border-gray-200 bg-white hover:border-gray-300'
+                }`}
+              >
+                <span className="block text-sm font-medium text-gray-800">{option.label}</span>
+                <span className="block text-xs text-gray-500">{option.hint}</span>
+              </button>
+            );
+          })}
+        </div>
       </div>
-      <div className="flex flex-wrap items-center gap-4">
-        <label className="flex items-center gap-2 text-sm text-gray-700">
-          <input
-            type="checkbox"
-            checked={directional}
-            onChange={(event) => handleDirectionalChange(event.target.checked)}
-            className="h-4 w-4 rounded border-gray-300"
+
+      {kind === 'hierarchy' ? (
+        <div className="grid grid-cols-2 gap-2">
+          <Input
+            label="Upper label"
+            value={upper}
+            autoFocus
+            onChange={(event) => setUpper(event.target.value)}
+            placeholder="e.g. Captain"
           />
-          Directional (hierarchy)
-        </label>
-        <label className="flex items-center gap-2 text-sm text-gray-700">
-          Icon
-          <select
-            value={icon}
-            onChange={(event) => setIcon(event.target.value)}
-            className="rounded-md border border-gray-300 bg-white px-2 py-1 text-sm"
-          >
-            {RELATIONSHIP_ICON_KEYS.map((key) => (
-              <option key={key} value={key}>
-                {key}
-              </option>
-            ))}
-          </select>
-        </label>
-      </div>
-      <label className="block text-sm text-gray-700">
-        Wiring
+          <Input
+            label="Lower label"
+            value={lower}
+            onChange={(event) => setLower(event.target.value)}
+            placeholder="e.g. Crew member"
+          />
+        </div>
+      ) : (
+        <Input
+          label="Label"
+          value={single}
+          autoFocus
+          onChange={(event) => setSingle(event.target.value)}
+          placeholder={kind === 'sibling' ? 'e.g. Sibling' : 'e.g. Colleague'}
+        />
+      )}
+
+      <label className="flex items-center gap-2 text-sm text-gray-700">
+        Icon
         <select
-          value={link}
-          onChange={(event) => setLink(event.target.value as RelationshipLink)}
-          className="mt-1 w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900"
+          value={icon}
+          onChange={(event) => setIcon(event.target.value)}
+          className="rounded-md border border-gray-300 bg-white px-2 py-1 text-sm"
         >
-          {LINK_OPTIONS.map((option) => (
-            <option key={option.value} value={option.value}>
-              {option.label}
+          {RELATIONSHIP_ICON_KEYS.map((key) => (
+            <option key={key} value={key}>
+              {key}
             </option>
           ))}
         </select>
       </label>
+
       {error && <p className="text-sm text-red-600">{error}</p>}
       <div className="flex justify-end gap-2">
         <Button type="button" size="sm" variant="ghost" onClick={onCancel}>

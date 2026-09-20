@@ -269,6 +269,30 @@ export function chartTypeUsesLevels(chartType: ChartType): boolean {
   return chartType.usesLevels;
 }
 
+/** Plain-language description of how a relationship type connects nodes. */
+export function relationshipKindLabel(def: RelationshipTypeDef): string {
+  if (def.link === 'shared-parent') return 'Same parent (siblings)';
+  if (def.directional) return 'Above / Below';
+  return 'Side by side';
+}
+
+/**
+ * Resolves a stored relationship value (`<id>:<direction>`, or a legacy free-text
+ * role) to a human label. Never returns the raw internal key.
+ */
+export function relationshipLabelForValue(
+  chartType: ChartType,
+  value: string,
+  fallbackRole = '',
+): string {
+  const option = findRelationshipOption(chartType, value);
+  if (option) return option.label;
+  const id = value.includes(':') ? value.slice(0, value.indexOf(':')) : value;
+  const def = findRelationshipDef(chartType, id);
+  if (def) return def.label || def.forwardLabel || 'Relationship';
+  return fallbackRole.trim() || 'Custom relationship';
+}
+
 /** A relationship type with sensible defaults for the inline create form. */
 export function newRelationshipType(): RelationshipTypeDef {
   return {

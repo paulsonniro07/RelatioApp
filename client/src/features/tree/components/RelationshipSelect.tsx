@@ -1,4 +1,4 @@
-import { relationshipOptions } from '@/features/tree/chartTypes';
+import { relationshipLabelForValue, relationshipOptions } from '@/features/tree/chartTypes';
 import type { ChartType } from '@/features/tree/types';
 
 interface RelationshipSelectProps {
@@ -28,8 +28,11 @@ export function RelationshipSelect({
   const options = relationshipOptions(chartType);
   const hasValue = value !== '';
   const isKnown = options.some((option) => option.value === value);
-  const customValue = allowCustomValue?.trim() ?? '';
-  const showCustom = hasValue && !isKnown && customValue !== '' && customValue === value;
+  // A value that no longer matches an option (e.g. the chart type changed) is
+  // shown by its human label — never the internal "<id>:<direction>" key.
+  const unknownLabel = hasValue
+    ? relationshipLabelForValue(chartType, value, allowCustomValue)
+    : '';
 
   return (
     <div className="space-y-1">
@@ -56,10 +59,7 @@ export function RelationshipSelect({
             {option.label}
           </option>
         ))}
-        {showCustom && <option value={value}>{value} (current)</option>}
-        {!isKnown && hasValue && !showCustom && (
-          <option value={value}>{value}</option>
-        )}
+        {!isKnown && hasValue && <option value={value}>{unknownLabel}</option>}
         {onAddRelationshipType && <option value={ADD_VALUE}>+ Add relationship type…</option>}
       </select>
       {chartType.relationships.length === 0 && (

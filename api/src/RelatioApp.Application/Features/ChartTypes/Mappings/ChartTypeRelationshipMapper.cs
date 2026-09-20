@@ -52,47 +52,6 @@ public static class ChartTypeRelationshipMapper
         return result;
     }
 
-    /// <summary>Soft-deletes removed definitions and upserts the incoming set.</summary>
-    public static void Apply(
-        ChartType chartType,
-        IEnumerable<RelationshipTypeDefinitionDto> dtos)
-    {
-        var definitions = Build(dtos);
-        var incomingIds = definitions
-            .Select(d => d.TypeId)
-            .ToHashSet(StringComparer.OrdinalIgnoreCase);
-
-        foreach (var existing in chartType.Relationships.Where(r => !r.IsDeleted).ToList())
-        {
-            if (!incomingIds.Contains(existing.TypeId))
-            {
-                existing.IsDeleted = true;
-                existing.UpdatedAt = DateTime.UtcNow;
-            }
-        }
-
-        foreach (var def in definitions)
-        {
-            var existing = chartType.Relationships.FirstOrDefault(
-                r => !r.IsDeleted && string.Equals(r.TypeId, def.TypeId, StringComparison.OrdinalIgnoreCase));
-
-            if (existing is null)
-            {
-                chartType.Relationships.Add(def);
-            }
-            else
-            {
-                existing.Label = def.Label;
-                existing.ForwardLabel = def.ForwardLabel;
-                existing.BackwardLabel = def.BackwardLabel;
-                existing.Icon = def.Icon;
-                existing.Directional = def.Directional;
-                existing.Link = def.Link;
-                existing.UpdatedAt = DateTime.UtcNow;
-            }
-        }
-    }
-
     private static string Slugify(string label)
     {
         var slug = new string(

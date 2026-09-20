@@ -7,6 +7,12 @@ public interface IChartTypeRepository : IGenericRepository<ChartType>
 {
     Task<ChartType?> GetByIdWithRelationshipsAsync(Guid id, CancellationToken ct = default);
 
+    /// <summary>
+    /// Tracks a new relationship definition as Added. Adding it to the loaded
+    /// navigation alone can be tracked as Modified, which breaks the insert.
+    /// </summary>
+    void AddRelationship(RelationshipTypeDefinition relationship);
+
     Task<PaginatedList<ChartType>> GetPagedWithRelationshipsAsync(
         PaginationFilter filter,
         CancellationToken ct = default);

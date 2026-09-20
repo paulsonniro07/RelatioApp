@@ -23,6 +23,7 @@ import { useToast } from '@/components/ui/Toast';
 import { getErrorMessage } from '@/lib/errors';
 import { ChartPicker } from '@/features/tree/components/ChartPicker';
 import { ChartTypeManager } from '@/features/tree/components/ChartTypeManager';
+import { ConnectNodeDialog } from '@/features/tree/components/ConnectNodeDialog';
 import { LevelLegend } from '@/features/tree/components/LevelLegend';
 import { LinkNodeDialog } from '@/features/tree/components/LinkNodeDialog';
 import { NodeForm, type NodeFormSubmitOptions } from '@/features/tree/components/NodeForm';
@@ -31,6 +32,9 @@ import {
   ChartExportStage,
   type ChartExportHandle,
 } from '@/features/tree/export/ChartExportStage';
+import { findRelationshipOption, relationshipOptions } from '@/features/tree/chartTypes';
+import { NODE_WIDTH } from '@/features/tree/layout';
+import { wouldCreateCycle } from '@/features/tree/store';
 import { useTreeChart } from '@/hooks/useTreeChart';
 import { AppearancePanel } from '@/features/tree/theme/AppearancePanel';
 import { useTheme } from '@/features/tree/theme/ThemeProvider';
@@ -38,6 +42,8 @@ import type {
   ChartType,
   NodePhotoDraft,
   RelationshipTypeDef,
+  SortDir,
+  SortKey,
   TreeNode,
   TreeNodeInput,
 } from '@/features/tree/types';
@@ -53,6 +59,28 @@ const EMPTY_CHART_TYPE: ChartType = {
   isExample: false,
   createdAt: '',
   updatedAt: '',
+};
+
+const SORT_OPTIONS: Array<{ id: string; label: string }> = [
+  { id: 'name:asc', label: 'Name A→Z' },
+  { id: 'name:desc', label: 'Name Z→A' },
+  { id: 'birthday:asc', label: 'Birthday — oldest first' },
+  { id: 'birthday:desc', label: 'Birthday — youngest first' },
+  { id: 'sequence:asc', label: 'Sequence — 1 → 9 (manual order)' },
+  { id: 'sequence:desc', label: 'Sequence — 9 → 1 (manual order)' },
+  { id: 'level:asc', label: 'Level A→Z' },
+  { id: 'level:desc', label: 'Level Z→A' },
+];
+
+const SORT_SHORT: Record<string, string> = {
+  'name:asc': 'Name ↑',
+  'name:desc': 'Name ↓',
+  'birthday:asc': 'Birthday ↑',
+  'birthday:desc': 'Birthday ↓',
+  'sequence:asc': 'Sequence ↑',
+  'sequence:desc': 'Sequence ↓',
+  'level:asc': 'Level ↑',
+  'level:desc': 'Level ↓',
 };
 
 export function TreeChartPage() {
@@ -77,6 +105,7 @@ export function TreeChartPage() {
     applyAutoLayout,
     reset,
     setChartType,
+    setChartSort,
     updateChartType,
   } = useTreeChart();
   const { success: toastSuccess, error: toastError } = useToast();
@@ -100,6 +129,11 @@ export function TreeChartPage() {
   const [deleteSelectedOpen, setDeleteSelectedOpen] = useState(false);
   const [resetOpen, setResetOpen] = useState(false);
   const [linkNodeTarget, setLinkNodeTarget] = useState<TreeNode | null>(null);
+  const [connectDialog, setConnectDialog] = useState<{
+    source: TreeNode;
+    targetId: string | null;
+    category: 'directional' | 'lateral' | null;
+  } | null>(null);
 
   // Leave selection mode whenever the active chart changes; if the store set a
   // focus node (arriving via a cross-chart link), highlight it instead.
@@ -126,6 +160,137 @@ export function TreeChartPage() {
       toastError('Linked chart no longer exists');
     }
   };
+
+  /** Connects two existing cards in the active chart with a chosen relationship. */
+  const applySameChartRelationship = async (
+    sourceId: string,
+    targetId: string,
+    relationshipValue: string,
+  ) => {
+    if (!chart) return;
+    const option = findRelationshipOption(effectiveChartType, relationshipValue);
+    if (!option) throw new Error('Unknown relationship');
+    const target = chart.nodes.find((n) => n.id === targetId);
+    if (!target) throw new Error('Card not found');
+
+    await updateNode(sourceId, {
+      role: option.label,
+      relationshipTypeId: option.relationshipId,
+    });
+
+    if (option.link === 'parent') {
+      if (option.direction === 'forward') {
+        // Source is the upper card; target moves below it.
+        if (wouldCreateCycle(chart.nodes, targetId, sourceId)) {
+          throw new Error('Cannot create a cycle');
+        }
+        await setParent(targetId, sourceId);
+      } else {
+        if (wouldCreateCycle(chart.nodes, sourceId, targetId)) {
+          throw new Error('Cannot create a cycle');
+        }
+        await setParent(sourceId, targetId);
+      }
+    } else if (option.link === 'partner') {
+      await setPartner(sourceId, targetId);
+    } else {
+      await setParent(sourceId, target.parentId);
+    }
+  };
+
+  const handleQuickAdd = async (
+    node: TreeNode,
+    kind: 'below' | 'beside',
+    name: string,
+    relationshipValue: string,
+  ) => {
+    try {
+      const option = findRelationshipOption(effectiveChartType, relationshipValue);
+      let parentId: string | null = null;
+      let partnerId: string | null = null;
+      let positionX: number | undefined;
+      let positionY: number | undefined;
+
+      if (kind === 'below') {
+        parentId = node.id;
+      } else if (option?.link === 'shared-parent') {
+        parentId = node.parentId;
+      } else {
+        partnerId = node.id;
+        positionX = node.positionX + NODE_WIDTH + 60;
+        positionY = node.positionY;
+      }
+
+      await addNode({
+        name,
+        parentId,
+        partnerId,
+        level: '',
+        role: option?.label ?? '',
+        relationshipTypeId: option?.relationshipId ?? null,
+        birthDate: null,
+        sequence: null,
+        notes: '',
+        photoUrl: null,
+        positionX,
+        positionY,
+      });
+      toastSuccess(`Added ${name}`);
+    } catch (err) {
+      toastError(getErrorMessage(err, 'Failed to add card'));
+    }
+  };
+
+  /** Reorders same-parent siblings by moving `source` to `target`'s slot. */
+  const handleReorder = async (source: TreeNode, target: TreeNode) => {
+    if (!chart) return;
+    const parentId = source.parentId ?? null;
+    if ((target.parentId ?? null) !== parentId) return;
+
+    const siblings = chart.nodes
+      .filter((n) => (n.parentId ?? null) === parentId)
+      .sort((a, b) => a.positionX - b.positionX);
+    const fromIdx = siblings.findIndex((n) => n.id === source.id);
+    const toIdx = siblings.findIndex((n) => n.id === target.id);
+    if (fromIdx < 0 || toIdx < 0 || fromIdx === toIdx) return;
+
+    const reordered = [...siblings];
+    const [moved] = reordered.splice(fromIdx, 1);
+    reordered.splice(toIdx, 0, moved);
+
+    try {
+      await Promise.all(reordered.map((n, i) => updateNode(n.id, { sequence: i + 1 })));
+      await setChartSort('sequence', 'asc');
+      await applyAutoLayout('sequence', 'asc');
+      toastSuccess('Order updated');
+    } catch {
+      toastError('Failed to reorder');
+    }
+  };
+
+  const handleMoveSibling = async (node: TreeNode, delta: -1 | 1) => {
+    if (!chart) return;
+    const parentId = node.parentId ?? null;
+    const siblings = chart.nodes
+      .filter((n) => (n.parentId ?? null) === parentId)
+      .sort((a, b) => a.positionX - b.positionX);
+    const idx = siblings.findIndex((n) => n.id === node.id);
+    const targetIdx = idx + delta;
+    if (targetIdx < 0 || targetIdx >= siblings.length) return;
+    await handleReorder(node, siblings[targetIdx]);
+  };
+
+  const connectDefaultValue = (() => {
+    if (!connectDialog) return '';
+    const options = relationshipOptions(effectiveChartType);
+    if (connectDialog.category === 'lateral') {
+      return options.find((o) => o.direction === 'lateral')?.value ?? '';
+    }
+    if (connectDialog.category === 'directional') {
+      return options.find((o) => o.direction === 'backward')?.value ?? '';
+    }
+    return '';
+  })();
 
   const openAdd = () => {
     setEditingNode(null);
@@ -157,6 +322,8 @@ export function TreeChartPage() {
           notes: input.notes,
           photoUrl: input.photoUrl,
           relationshipTypeId: input.relationshipTypeId,
+          birthDate: input.birthDate,
+          sequence: input.sequence,
         });
         await setParent(editingId, input.parentId);
         if (input.partnerId !== editingNode?.partnerId) {
@@ -397,6 +564,23 @@ export function TreeChartPage() {
                 )}
                 {multiSelect ? 'Done' : 'Select'}
               </Button>
+              <Dropdown
+                variant="pill"
+                ariaLabel="Sort order for auto layout"
+                value={`${chart.sortKey}:${chart.sortDir}`}
+                trigger={
+                  <span className="inline-flex items-center gap-1.5 whitespace-nowrap">
+                    Sort: {SORT_SHORT[`${chart.sortKey}:${chart.sortDir}`] ?? 'Name ↑'}
+                  </span>
+                }
+                options={SORT_OPTIONS}
+                onSelect={(id) => {
+                  const [key, dir] = id.split(':') as [SortKey, SortDir];
+                  void setChartSort(key, dir)
+                    .then(() => toastSuccess('Sort set — click Auto layout to apply'))
+                    .catch(() => toastError('Failed to save sort'));
+                }}
+              />
               <Button
                 variant="ghost"
                 size="sm"
@@ -505,6 +689,15 @@ export function TreeChartPage() {
           onOpenLink={setLinkNodeTarget}
           onNavigateLink={(node) => void handleNavigateLink(node)}
           focusNodeId={focusNodeId}
+          onQuickAdd={handleQuickAdd}
+          onLinkExisting={(node) =>
+            setConnectDialog({ source: node, targetId: null, category: null })
+          }
+          onConnectDrop={(source, target, category) =>
+            setConnectDialog({ source, targetId: target.id, category })
+          }
+          onReorder={handleReorder}
+          onMoveSibling={handleMoveSibling}
         />
         {multiSelect && (
           <div className="pointer-events-none absolute inset-x-0 bottom-4 z-30 flex justify-center px-4">
@@ -628,6 +821,28 @@ export function TreeChartPage() {
           <CursorArrowIcon className="mr-2 h-5 w-5" />
           Select nodes to delete
         </Button>
+        <label className="flex h-12 items-center justify-between gap-3 rounded-md border border-gray-200 px-3 text-sm text-gray-700">
+          <span className="flex items-center gap-2">
+            <SparklesIcon className="h-5 w-5" />
+            Sort order
+          </span>
+          <select
+            value={`${chart.sortKey}:${chart.sortDir}`}
+            onChange={(event) => {
+              const [key, dir] = event.target.value.split(':') as [SortKey, SortDir];
+              void setChartSort(key, dir)
+                .then(() => toastSuccess('Sort set — tap Auto layout to apply'))
+                .catch(() => toastError('Failed to save sort'));
+            }}
+            className="rounded-md border border-gray-300 bg-white px-2 py-1 text-sm"
+          >
+            {SORT_OPTIONS.map((option) => (
+              <option key={option.id} value={option.id}>
+                {option.label}
+              </option>
+            ))}
+          </select>
+        </label>
         <Button
           variant="secondary"
           size="lg"
@@ -678,6 +893,23 @@ export function TreeChartPage() {
         open={linkNodeTarget !== null}
         node={linkNodeTarget}
         onClose={() => setLinkNodeTarget(null)}
+      />
+
+      <ConnectNodeDialog
+        open={connectDialog !== null}
+        source={connectDialog?.source ?? null}
+        chartType={effectiveChartType}
+        initialTargetId={connectDialog?.targetId ?? null}
+        initialRelationshipValue={connectDefaultValue}
+        onClose={() => setConnectDialog(null)}
+        onConfirm={(targetId, relationshipValue) => {
+          if (!connectDialog) return Promise.resolve();
+          return applySameChartRelationship(
+            connectDialog.source.id,
+            targetId,
+            relationshipValue,
+          );
+        }}
       />
 
       <AppearancePanel open={appearanceOpen} onClose={() => setAppearanceOpen(false)} />

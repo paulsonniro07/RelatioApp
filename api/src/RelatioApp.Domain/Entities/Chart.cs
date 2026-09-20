@@ -12,6 +12,12 @@ public class Chart : BaseEntity
 
     public ChartType? ChartType { get; set; }
 
+    /// <summary>Sibling/root sort key applied by Auto layout: name | birthday | sequence | level.</summary>
+    public string SortKey { get; set; } = "name";
+
+    /// <summary>Sort direction: asc | desc.</summary>
+    public string SortDir { get; set; } = "asc";
+
     /// <summary>
     /// Marker for auto-created reference charts (Org/Family examples). The
     /// client re-seeds any missing example on load so reference charts are
