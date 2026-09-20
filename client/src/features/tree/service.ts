@@ -7,6 +7,8 @@ import type {
   ChartTypeInput,
   ChartTypeSummary,
   LinkedNodeRef,
+  SortDir,
+  SortKey,
   TreeNode,
   TreeNodeInput,
 } from './types';
@@ -14,12 +16,24 @@ import type {
 export interface CreateChartInput {
   name: string;
   chartTypeId: string;
+  sortKey?: SortKey;
+  sortDir?: SortDir;
   /** Marks an auto-seeded reference chart so it can be re-seeded if deleted. */
   isExample?: boolean;
 }
 
 export type TreeNodePatch = Partial<
-  Pick<TreeNode, 'name' | 'role' | 'level' | 'notes' | 'photoUrl' | 'relationshipTypeId'>
+  Pick<
+    TreeNode,
+    | 'name'
+    | 'role'
+    | 'level'
+    | 'notes'
+    | 'photoUrl'
+    | 'relationshipTypeId'
+    | 'birthDate'
+    | 'sequence'
+  >
 >;
 
 function toSummary(chart: Chart): ChartSummary {
@@ -27,6 +41,8 @@ function toSummary(chart: Chart): ChartSummary {
     id: chart.id,
     name: chart.name,
     chartTypeId: chart.chartTypeId,
+    sortKey: chart.sortKey,
+    sortDir: chart.sortDir,
     isExample: chart.isExample,
     createdAt: chart.createdAt,
     updatedAt: chart.updatedAt,
@@ -61,7 +77,7 @@ export const chartService = {
 
   updateChart: async (
     chartId: string,
-    input: { name?: string; chartTypeId?: string },
+    input: { name?: string; chartTypeId?: string; sortKey?: SortKey; sortDir?: SortDir },
   ): Promise<Chart> => {
     const response = await api.put<Chart>(`/charts/${chartId}`, input);
     return response.data;

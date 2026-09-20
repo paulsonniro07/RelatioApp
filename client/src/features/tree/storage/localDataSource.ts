@@ -13,6 +13,8 @@ import type {
   ChartType,
   ChartTypeInput,
   LinkedNodeRef,
+  SortDir,
+  SortKey,
   TreeNode,
   TreeNodeInput,
 } from '../types';
@@ -68,6 +70,8 @@ function toSummary(chart: Chart): ChartSummary {
     id: chart.id,
     name: chart.name,
     chartTypeId: chart.chartTypeId,
+    sortKey: chart.sortKey,
+    sortDir: chart.sortDir,
     isExample: chart.isExample,
     createdAt: chart.createdAt,
     updatedAt: chart.updatedAt,
@@ -152,6 +156,8 @@ function materializeSampleChart(kind: 'org' | 'family', chartType: ChartType): C
       role: node.role,
       relationshipTypeId: inferRelationshipId(chartType, node.role),
       linkedNodeRef: null,
+      birthDate: null,
+      sequence: null,
       notes: node.notes,
       photoUrl: null,
       positionX: position?.x ?? 0,
@@ -165,6 +171,8 @@ function materializeSampleChart(kind: 'org' | 'family', chartType: ChartType): C
     id: chartId,
     name: sample.name,
     chartTypeId: chartType.id,
+    sortKey: 'name',
+    sortDir: 'asc',
     isExample: true,
     createdAt: timestamp,
     updatedAt: timestamp,
@@ -205,6 +213,11 @@ function ensureInitialData(database: LocalDatabase): boolean {
       delete legacy.mode;
       changed = true;
     }
+    if (!chart.sortKey) {
+      chart.sortKey = 'name';
+      chart.sortDir = 'asc';
+      changed = true;
+    }
     const chartType = database.chartTypes.find((ct) => ct.id === chart.chartTypeId);
     if (chartType) {
       for (const node of chart.nodes) {
@@ -214,6 +227,10 @@ function ensureInitialData(database: LocalDatabase): boolean {
             node.relationshipTypeId = inferred;
             changed = true;
           }
+        }
+        if (node.birthDate === undefined) {
+          node.birthDate = null;
+          changed = true;
         }
       }
     }
@@ -262,6 +279,8 @@ export const localDataSource: TreeDataSource = {
       id: newId(),
       name: input.name,
       chartTypeId: input.chartTypeId,
+      sortKey: input.sortKey ?? 'name',
+      sortDir: input.sortDir ?? 'asc',
       isExample: input.isExample ?? false,
       createdAt: timestamp,
       updatedAt: timestamp,
@@ -274,12 +293,14 @@ export const localDataSource: TreeDataSource = {
 
   async updateChart(
     chartId: string,
-    input: { name?: string; chartTypeId?: string },
+    input: { name?: string; chartTypeId?: string; sortKey?: SortKey; sortDir?: SortDir },
   ): Promise<Chart> {
     const database = readDatabase();
     const chart = findChart(database, chartId);
     if (input.name !== undefined) chart.name = input.name;
     if (input.chartTypeId !== undefined) chart.chartTypeId = input.chartTypeId;
+    if (input.sortKey !== undefined) chart.sortKey = input.sortKey;
+    if (input.sortDir !== undefined) chart.sortDir = input.sortDir;
     chart.updatedAt = nowIso();
     writeDatabase(database);
     return clone(chart);
@@ -339,6 +360,8 @@ export const localDataSource: TreeDataSource = {
       role: input.role,
       relationshipTypeId: input.relationshipTypeId,
       linkedNodeRef: null,
+      birthDate: input.birthDate ?? null,
+      sequence: input.sequence ?? null,
       notes: input.notes,
       photoUrl: input.photoUrl ?? null,
       positionX: input.positionX ?? 0,
@@ -378,6 +401,12 @@ export const localDataSource: TreeDataSource = {
     if (patch.photoUrl !== undefined) node.photoUrl = patch.photoUrl;
     if (patch.relationshipTypeId !== undefined) {
       node.relationshipTypeId = patch.relationshipTypeId;
+    }
+    if (patch.birthDate !== undefined) {
+      node.birthDate = patch.birthDate;
+    }
+    if (patch.sequence !== undefined) {
+      node.sequence = patch.sequence;
     }
     const timestamp = nowIso();
     node.updatedAt = timestamp;

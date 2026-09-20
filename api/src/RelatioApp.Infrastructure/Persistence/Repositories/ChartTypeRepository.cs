@@ -17,6 +17,9 @@ public class ChartTypeRepository : GenericRepository<ChartType>, IChartTypeRepos
             .Include(ct => ct.Relationships)
             .FirstOrDefaultAsync(ct => ct.Id == id && !ct.IsDeleted, ct);
 
+    public void AddRelationship(RelationshipTypeDefinition relationship)
+        => _context.RelationshipTypeDefinitions.Add(relationship);
+
     public async Task<PaginatedList<ChartType>> GetPagedWithRelationshipsAsync(
         PaginationFilter filter,
         CancellationToken ct = default)

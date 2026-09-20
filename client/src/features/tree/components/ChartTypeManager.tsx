@@ -7,6 +7,7 @@ import { Modal } from '@/components/ui/Modal';
 import { PencilIcon, PlusIcon, TrashIcon } from '@/components/ui/icons';
 import { useToast } from '@/components/ui/Toast';
 import { getErrorMessage } from '@/lib/errors';
+import { relationshipKindLabel } from '@/features/tree/chartTypes';
 import { useTreeChart } from '@/hooks/useTreeChart';
 import type { ChartType, ChartTypeInput, RelationshipTypeDef } from '@/features/tree/types';
 
@@ -270,7 +271,7 @@ export function ChartTypeManager({ open, startNew = false, onClose }: ChartTypeM
                       <span className="min-w-0 truncate text-sm text-gray-700">
                         {def.label || def.forwardLabel}
                         <span className="ml-1 text-xs text-gray-400">
-                          {def.directional ? 'directional' : 'lateral'} · {def.link}
+                          {relationshipKindLabel(def)}
                         </span>
                       </span>
                       <span className="flex items-center gap-0.5">

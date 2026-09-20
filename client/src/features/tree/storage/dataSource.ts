@@ -5,6 +5,8 @@ import type {
   ChartType,
   ChartTypeInput,
   LinkedNodeRef,
+  SortDir,
+  SortKey,
   TreeNode,
   TreeNodeInput,
 } from '../types';
@@ -24,7 +26,7 @@ export interface TreeDataSource {
   createChart(input: CreateChartInput): Promise<Chart>;
   updateChart(
     chartId: string,
-    input: { name?: string; chartTypeId?: string },
+    input: { name?: string; chartTypeId?: string; sortKey?: SortKey; sortDir?: SortDir },
   ): Promise<Chart>;
   deleteChart(chartId: string): Promise<void>;
 

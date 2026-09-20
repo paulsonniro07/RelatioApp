@@ -31,6 +31,8 @@ public class UpdateNodeHandler : IRequestHandler<UpdateNodeCommand, TreeNodeDto>
         node.Level = request.Input.Level ?? string.Empty;
         node.RoleOrRelationship = request.Input.Role ?? string.Empty;
         node.RelationshipTypeId = request.Input.RelationshipTypeId;
+        node.BirthDate = request.Input.BirthDate;
+        node.Sequence = request.Input.Sequence;
         node.Notes = request.Input.Notes ?? string.Empty;
         node.PhotoUrl = request.Input.PhotoUrl;
 

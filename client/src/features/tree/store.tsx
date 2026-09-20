@@ -19,6 +19,8 @@ import type {
   ChartType,
   ChartTypeInput,
   LinkedNodeRef,
+  SortDir,
+  SortKey,
   TreeNode,
   TreeNodeInput,
 } from './types';
@@ -34,7 +36,17 @@ export interface TreeChartState {
 }
 
 export type TreeNodePatch = Partial<
-  Pick<TreeNode, 'name' | 'level' | 'role' | 'notes' | 'photoUrl' | 'relationshipTypeId'>
+  Pick<
+    TreeNode,
+    | 'name'
+    | 'level'
+    | 'role'
+    | 'notes'
+    | 'photoUrl'
+    | 'relationshipTypeId'
+    | 'birthDate'
+    | 'sequence'
+  >
 >;
 
 /** Prevents cycles: returns true if setting node id's parent to parentId would loop. */
@@ -85,6 +97,8 @@ function toSummary(chart: Chart): ChartSummary {
     id: chart.id,
     name: chart.name,
     chartTypeId: chart.chartTypeId,
+    sortKey: chart.sortKey,
+    sortDir: chart.sortDir,
     isExample: chart.isExample,
     createdAt: chart.createdAt,
     updatedAt: chart.updatedAt,
@@ -165,6 +179,8 @@ async function createSampleChartInDb(
       level: sampleNode.level,
       role: sampleNode.role,
       relationshipTypeId: inferRelationshipId(chartType, sampleNode.role),
+      birthDate: null,
+      sequence: null,
       notes: sampleNode.notes,
       photoUrl: sampleNode.photoUrl,
       positionX: position?.x ?? 0,
@@ -251,6 +267,8 @@ export interface TreeChartContextValue extends TreeChartState {
   createChart: (name: string, chartTypeId: string) => Promise<void>;
   renameChart: (chartId: string, name: string) => Promise<void>;
   setChartType: (chartTypeId: string) => Promise<void>;
+  /** Persist the sibling/root sort used by Auto layout. */
+  setChartSort: (sortKey: SortKey, sortDir: SortDir) => Promise<void>;
   deleteChart: (chartId: string) => Promise<void>;
   createChartType: (input: ChartTypeInput) => Promise<ChartType>;
   updateChartType: (chartTypeId: string, input: ChartTypeInput) => Promise<ChartType>;
@@ -273,7 +291,7 @@ export interface TreeChartContextValue extends TreeChartState {
   removePhoto: (nodeId: string) => Promise<void>;
   deleteNode: (id: string) => Promise<void>;
   deleteNodes: (nodeIds: string[]) => Promise<void>;
-  applyAutoLayout: () => Promise<void>;
+  applyAutoLayout: (sortKey?: SortKey, sortDir?: SortDir) => Promise<void>;
   reset: () => Promise<void>;
 }
 
@@ -425,6 +443,8 @@ export function TreeChartProvider({ children }: { children: ReactNode }) {
         relationshipTypeId: activeType
           ? inferRelationshipId(activeType, target.role)
           : null,
+        birthDate: target.birthDate,
+        sequence: target.sequence,
         notes: target.notes,
         photoUrl: null,
         positionX: position.x,
@@ -513,6 +533,26 @@ export function TreeChartProvider({ children }: { children: ReactNode }) {
           : s.chart,
     }));
   }, [requireChart]);
+
+  const setChartSort = useCallback(
+    async (sortKey: SortKey, sortDir: SortDir) => {
+      const chart = requireChart();
+      const updated = await treeDataSource.updateChart(chart.id, { sortKey, sortDir });
+      setState((s) => ({
+        ...s,
+        charts: s.charts.map((c) =>
+          c.id === chart.id
+            ? { ...c, sortKey: updated.sortKey, sortDir: updated.sortDir, updatedAt: updated.updatedAt }
+            : c,
+        ),
+        chart:
+          s.chart?.id === chart.id
+            ? { ...s.chart, sortKey: updated.sortKey, sortDir: updated.sortDir, updatedAt: updated.updatedAt }
+            : s.chart,
+      }));
+    },
+    [requireChart],
+  );
 
   const createChartType = useCallback(async (input: ChartTypeInput) => {
     const created = await treeDataSource.createChartType(input);
@@ -699,22 +739,30 @@ export function TreeChartProvider({ children }: { children: ReactNode }) {
     [requireChart],
   );
 
-  const applyAutoLayout = useCallback(async () => {
-    const chart = requireChart();
-    if (chart.nodes.length === 0) return;
-    const positions = computeAutoLayout(chart.nodes);
-    const updated = chart.nodes.map((n) => {
-      const position = positions.get(n.id);
-      return position ? { ...n, positionX: position.x, positionY: position.y } : n;
-    });
-    setState((s) => (s.chart ? { ...s, chart: { ...s.chart, nodes: updated } } : s));
-    const results = await Promise.allSettled(
-      updated.map((n) => treeDataSource.setPosition(chart.id, n.id, n.positionX, n.positionY)),
-    );
-    if (results.some((r) => r.status === 'rejected')) {
-      throw new Error('Failed to save layout');
-    }
-  }, [requireChart]);
+  const applyAutoLayout = useCallback(
+    async (sortKey?: SortKey, sortDir?: SortDir) => {
+      const chart = requireChart();
+      if (chart.nodes.length === 0) return;
+      const positions = computeAutoLayout(chart.nodes, {
+        sortKey: sortKey ?? chart.sortKey,
+        sortDir: sortDir ?? chart.sortDir,
+      });
+      const updated = chart.nodes.map((n) => {
+        const position = positions.get(n.id);
+        return position ? { ...n, positionX: position.x, positionY: position.y } : n;
+      });
+      setState((s) => (s.chart ? { ...s, chart: { ...s.chart, nodes: updated } } : s));
+      const results = await Promise.allSettled(
+        updated.map((n) =>
+          treeDataSource.setPosition(chart.id, n.id, n.positionX, n.positionY),
+        ),
+      );
+      if (results.some((r) => r.status === 'rejected')) {
+        throw new Error('Failed to save layout');
+      }
+    },
+    [requireChart],
+  );
 
   const reset = useCallback(async () => {
     // Reset clears the CURRENT chart's nodes — it never creates a new chart.
@@ -765,6 +813,7 @@ export function TreeChartProvider({ children }: { children: ReactNode }) {
       createChart,
       renameChart,
       setChartType,
+      setChartSort,
       deleteChart,
       createChartType,
       updateChartType,
@@ -793,6 +842,7 @@ export function TreeChartProvider({ children }: { children: ReactNode }) {
       createChart,
       renameChart,
       setChartType,
+      setChartSort,
       deleteChart,
       createChartType,
       updateChartType,

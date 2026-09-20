@@ -41,7 +41,45 @@ public class UpdateChartTypeHandler : IRequestHandler<UpdateChartTypeCommand, Ch
             chartType.IsExample = request.Input.IsExample.Value;
         }
 
-        ChartTypeRelationshipMapper.Apply(chartType, request.Input.Relationships);
+        // Reconcile the relationship set: soft-delete removed ones, update
+        // matched ones, and explicitly track new ones as Added (adding to the
+        // loaded navigation alone can be tracked as Modified and fail the insert).
+        var definitions = ChartTypeRelationshipMapper.Build(request.Input.Relationships);
+        var incomingIds = definitions
+            .Select(d => d.TypeId)
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+        foreach (var existing in chartType.Relationships.Where(r => !r.IsDeleted).ToList())
+        {
+            if (!incomingIds.Contains(existing.TypeId))
+            {
+                existing.IsDeleted = true;
+                existing.UpdatedAt = DateTime.UtcNow;
+            }
+        }
+
+        foreach (var def in definitions)
+        {
+            var existing = chartType.Relationships.FirstOrDefault(
+                r => !r.IsDeleted &&
+                     string.Equals(r.TypeId, def.TypeId, StringComparison.OrdinalIgnoreCase));
+
+            if (existing is null)
+            {
+                def.ChartTypeId = chartType.Id;
+                _repository.AddRelationship(def);
+            }
+            else
+            {
+                existing.Label = def.Label;
+                existing.ForwardLabel = def.ForwardLabel;
+                existing.BackwardLabel = def.BackwardLabel;
+                existing.Icon = def.Icon;
+                existing.Directional = def.Directional;
+                existing.Link = def.Link;
+                existing.UpdatedAt = DateTime.UtcNow;
+            }
+        }
 
         await _repository.SaveChangesAsync(ct);
         return ChartMapper.ToDto(chartType);

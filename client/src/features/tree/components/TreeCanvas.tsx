@@ -7,6 +7,7 @@ import { findDropTarget, type DropTargetInfo } from '@/features/tree/drag';
 import { computeEdges, parentEdgeLabelPoint, parentEdgePath, partnerEdgePath } from '@/features/tree/edges';
 import {
   chartTypeAllowsPartners,
+  relationshipOptions,
   resolveEdgeStyle,
 } from '@/features/tree/chartTypes';
 import { computeBounds, computeDepths, LAYOUT_MARGIN, NODE_HEIGHT, NODE_WIDTH } from '@/features/tree/layout';
@@ -63,6 +64,25 @@ interface TreeCanvasProps {
   onNavigateLink?: (node: TreeNode) => void;
   /** Node to center when arriving via a cross-chart link. */
   focusNodeId?: string | null;
+  /** Quick-create a card below/beside the selected node. */
+  onQuickAdd?: (
+    node: TreeNode,
+    kind: 'below' | 'beside',
+    name: string,
+    relationshipValue: string,
+  ) => Promise<void> | void;
+  /** Open the "connect to an existing card" dialog for a node. */
+  onLinkExisting?: (node: TreeNode) => void;
+  /** Dropped one card onto another — choose a relationship to connect them. */
+  onConnectDrop?: (
+    source: TreeNode,
+    target: TreeNode,
+    category: 'directional' | 'lateral',
+  ) => void;
+  /** Dropped a card onto a sibling — reorder instead of link. */
+  onReorder?: (source: TreeNode, target: TreeNode) => void;
+  /** Move the selected card one slot earlier/later among its siblings. */
+  onMoveSibling?: (node: TreeNode, delta: -1 | 1) => void;
 }
 
 export function TreeCanvas({
@@ -81,6 +101,11 @@ export function TreeCanvas({
   onOpenLink,
   onNavigateLink,
   focusNodeId,
+  onQuickAdd,
+  onLinkExisting,
+  onConnectDrop,
+  onReorder,
+  onMoveSibling,
 }: TreeCanvasProps) {
   const { setPosition, setParent, setPartner } = useTreeChart();
   const { success: toastSuccess, error: toastError } = useToast();
@@ -93,6 +118,10 @@ export function TreeCanvas({
   const [dropTarget, setDropTarget] = useState<DropTargetInfo | null>(null);
   const [hoveredNodeId, setHoveredNodeId] = useState<string | null>(null);
   const suppressClickRef = useRef(false);
+  const [quickKind, setQuickKind] = useState<'below' | 'beside' | null>(null);
+  const [quickName, setQuickName] = useState('');
+  const [quickRelationship, setQuickRelationship] = useState('');
+  const [quickSaving, setQuickSaving] = useState(false);
 
   const { theme } = useTheme();
 
@@ -208,6 +237,13 @@ export function TreeCanvas({
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [drag]);
 
+  // Close the quick-add popover when the selection changes.
+  useEffect(() => {
+    setQuickKind(null);
+    setQuickName('');
+    setQuickRelationship('');
+  }, [selectedId]);
+
   const handleNodePointerDown = (
     event: React.PointerEvent<HTMLDivElement>,
     node: TreeNode,
@@ -244,7 +280,23 @@ export function TreeCanvas({
     if (drag.moved) {
       suppressClickRef.current = true;
       if (dropTarget?.zone && ghostPos) {
-        if (dropTarget.zone === 'partner') {
+        const source = byId.get(drag.nodeId);
+        const target = byId.get(dropTarget.nodeId);
+        const category: 'directional' | 'lateral' =
+          dropTarget.zone === 'partner' ? 'lateral' : 'directional';
+        const compatible =
+          category === 'lateral'
+            ? chartType.relationships.filter((def) => def.link === 'partner')
+            : chartType.relationships.filter((def) => def.directional && def.link === 'parent');
+
+        const sameRow = (source?.parentId ?? null) === (target?.parentId ?? null);
+        if (onReorder && source && target && sameRow) {
+          // Dropping onto a sibling reorders instead of linking.
+          onReorder(source, target);
+        } else if (onConnectDrop && source && target && compatible.length > 0) {
+          // Let the app choose the relationship instead of assuming one.
+          onConnectDrop(source, target, category);
+        } else if (dropTarget.zone === 'partner') {
           try {
             await setPartner(drag.nodeId, dropTarget.nodeId);
             toastSuccess('Partner linked');
@@ -383,6 +435,40 @@ export function TreeCanvas({
 
   const offsetX = LAYOUT_MARGIN - bounds.minX;
   const offsetY = LAYOUT_MARGIN - bounds.minY;
+
+  const selectedNode = selectedId ? (byId.get(selectedId) ?? null) : null;
+  const quickScreen = (() => {
+    if (!selectedNode) return null;
+    const cx = selectedNode.positionX + offsetX;
+    const cy = selectedNode.positionY + offsetY;
+    return {
+      x: transform.x + cx * transform.zoom,
+      y: transform.y + (cy + NODE_HEIGHT / 2) * transform.zoom + 8,
+    };
+  })();
+
+  const quickBelowOptions = relationshipOptions(chartType).filter(
+    (option) => option.direction === 'backward',
+  );
+  const quickBesideOptions = relationshipOptions(chartType).filter(
+    (option) => option.direction === 'lateral',
+  );
+  const quickActiveOptions = quickKind === 'below' ? quickBelowOptions : quickBesideOptions;
+
+  const submitQuickAdd = async () => {
+    if (!selectedNode || !quickKind || !onQuickAdd) return;
+    const name = quickName.trim();
+    if (!name) return;
+    setQuickSaving(true);
+    try {
+      await onQuickAdd(selectedNode, quickKind, name, quickRelationship);
+      setQuickKind(null);
+      setQuickName('');
+      setQuickRelationship('');
+    } finally {
+      setQuickSaving(false);
+    }
+  };
 
   return (
     <div
@@ -657,6 +743,132 @@ export function TreeCanvas({
           );
         })}
       </div>
+
+      {selectedNode &&
+        quickScreen &&
+        !selectionMode &&
+        (onQuickAdd || onLinkExisting || onMoveSibling) && (
+        <div
+          className="absolute z-30 -translate-x-1/2"
+          style={{ left: quickScreen.x, top: quickScreen.y }}
+          onPointerDown={(event) => event.stopPropagation()}
+          onClick={(event) => event.stopPropagation()}
+        >
+          <div
+            className="flex items-center gap-1 rounded-lg border p-1 shadow-md"
+            style={{
+              backgroundColor: 'var(--surface-background)',
+              borderColor: 'var(--border-color)',
+            }}
+          >
+            {onMoveSibling && (
+              <button
+                type="button"
+                title="Move earlier in the row"
+                aria-label="Move earlier in the row"
+                onClick={() => onMoveSibling(selectedNode, -1)}
+                className="rounded px-2 py-1 text-xs font-semibold text-[var(--text-primary)] hover:bg-[var(--control-hover)]"
+              >
+                ◀
+              </button>
+            )}
+            {onMoveSibling && (
+              <button
+                type="button"
+                title="Move later in the row"
+                aria-label="Move later in the row"
+                onClick={() => onMoveSibling(selectedNode, 1)}
+                className="rounded px-2 py-1 text-xs font-semibold text-[var(--text-primary)] hover:bg-[var(--control-hover)]"
+              >
+                ▶
+              </button>
+            )}
+            {onQuickAdd && (
+              <button
+                type="button"
+                onClick={() => {
+                  setQuickKind('below');
+                  setQuickName('');
+                  setQuickRelationship(quickBelowOptions[0]?.value ?? '');
+                }}
+                className="rounded px-2 py-1 text-xs font-medium text-[var(--text-primary)] hover:bg-[var(--control-hover)]"
+              >
+                ＋ Below
+              </button>
+            )}
+            {onQuickAdd && (
+              <button
+                type="button"
+                onClick={() => {
+                  setQuickKind('beside');
+                  setQuickName('');
+                  setQuickRelationship(quickBesideOptions[0]?.value ?? '');
+                }}
+                className="rounded px-2 py-1 text-xs font-medium text-[var(--text-primary)] hover:bg-[var(--control-hover)]"
+              >
+                ＋ Beside
+              </button>
+            )}
+            {onLinkExisting && (
+              <button
+                type="button"
+                onClick={() => onLinkExisting(selectedNode)}
+                className="rounded px-2 py-1 text-xs font-medium text-[var(--text-primary)] hover:bg-[var(--control-hover)]"
+              >
+                Link existing…
+              </button>
+            )}
+          </div>
+
+          {quickKind && onQuickAdd && (
+            <div
+              className="mt-1 flex flex-col gap-1 rounded-lg border p-1 shadow-md"
+              style={{
+                backgroundColor: 'var(--surface-background)',
+                borderColor: 'var(--border-color)',
+              }}
+            >
+              {quickActiveOptions.length > 1 && (
+                <select
+                  value={quickRelationship}
+                  onChange={(event) => setQuickRelationship(event.target.value)}
+                  onKeyDown={(event) => event.stopPropagation()}
+                  aria-label="Relationship"
+                  className="rounded border border-[var(--border-color)] bg-[var(--surface-background)] px-2 py-1 text-xs text-[var(--text-primary)] focus:outline-none"
+                >
+                  {quickActiveOptions.map((option) => (
+                    <option key={option.value} value={option.value}>
+                      {option.label}
+                    </option>
+                  ))}
+                </select>
+              )}
+              <div className="flex items-center gap-1">
+                <input
+                  autoFocus
+                  value={quickName}
+                  onChange={(event) => setQuickName(event.target.value)}
+                  onKeyDown={(event) => {
+                    event.stopPropagation();
+                    if (event.key === 'Enter') void submitQuickAdd();
+                    if (event.key === 'Escape') setQuickKind(null);
+                  }}
+                  placeholder={quickKind === 'below' ? 'New card below…' : 'New card beside…'}
+                  className="w-40 rounded border border-[var(--border-color)] bg-[var(--surface-background)] px-2 py-1 text-xs text-[var(--text-primary)] focus:outline-none focus:ring-1 focus:ring-[var(--accent)]"
+                />
+                <button
+                  type="button"
+                  disabled={quickSaving || !quickName.trim()}
+                  onClick={() => void submitQuickAdd()}
+                  className="rounded px-2 py-1 text-xs font-semibold text-[var(--accent)] disabled:opacity-40"
+                >
+                  Add
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
 
       <CanvasControls
         zoom={transform.zoom}

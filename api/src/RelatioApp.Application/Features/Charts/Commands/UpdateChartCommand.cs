@@ -8,8 +8,12 @@ using RelatioApp.Domain.Entities;
 
 namespace RelatioApp.Application.Features.Charts.Commands;
 
-public record UpdateChartCommand(Guid ChartId, string? Name, Guid? ChartTypeId)
-    : IRequest<ChartDto>;
+public record UpdateChartCommand(
+    Guid ChartId,
+    string? Name,
+    Guid? ChartTypeId,
+    string? SortKey,
+    string? SortDir) : IRequest<ChartDto>;
 
 public class UpdateChartHandler : IRequestHandler<UpdateChartCommand, ChartDto>
 {
@@ -31,10 +35,13 @@ public class UpdateChartHandler : IRequestHandler<UpdateChartCommand, ChartDto>
 
         var hasName = !string.IsNullOrWhiteSpace(request.Name);
         var hasChartType = request.ChartTypeId.HasValue;
+        var hasSort =
+            !string.IsNullOrWhiteSpace(request.SortKey) ||
+            !string.IsNullOrWhiteSpace(request.SortDir);
 
-        if (!hasName && !hasChartType)
+        if (!hasName && !hasChartType && !hasSort)
         {
-            throw ValidationErrors.Field("name", "Provide a name or chart type to update.");
+            throw ValidationErrors.Field("name", "Provide a name, chart type or sort to update.");
         }
 
         if (hasName)
@@ -56,6 +63,12 @@ public class UpdateChartHandler : IRequestHandler<UpdateChartCommand, ChartDto>
             }
 
             chart.ChartTypeId = request.ChartTypeId;
+        }
+
+        if (hasSort)
+        {
+            chart.SortKey = ChartMapper.NormalizeSortKey(request.SortKey ?? chart.SortKey);
+            chart.SortDir = ChartMapper.NormalizeSortDir(request.SortDir ?? chart.SortDir);
         }
 
         await _repository.SaveChangesAsync(ct);

@@ -1,4 +1,4 @@
-import type { TreeNode } from './types';
+import type { SortDir, SortKey, TreeNode } from './types';
 
 export const NODE_WIDTH = 180;
 /** Card height — sized to fit a two-line name plus role and note lines. */
@@ -61,6 +61,50 @@ export function computeDepths(nodes: TreeNode[]): Map<string, number> {
 }
 
 /**
+ * Orders two cards by the chosen sort key/direction. Cards without a birthday
+ * always sort last (regardless of direction) so blanks don't jump to the top.
+ */
+export function compareNodes(
+  a: TreeNode,
+  b: TreeNode,
+  key: SortKey,
+  dir: SortDir,
+): number {
+  const sign = dir === 'desc' ? -1 : 1;
+
+  if (key === 'birthday') {
+    const av = a.birthDate ?? '';
+    const bv = b.birthDate ?? '';
+    if (!av && !bv) return a.name.localeCompare(b.name);
+    if (!av) return 1;
+    if (!bv) return -1;
+    return av < bv ? -sign : av > bv ? sign : a.name.localeCompare(b.name);
+  }
+
+  if (key === 'sequence') {
+    const as = a.sequence;
+    const bs = b.sequence;
+    // Manual sequence wins; cards without one fall back to insertion order.
+    if (as != null && bs != null) {
+      const cmp = as - bs;
+      return cmp !== 0 ? sign * cmp : a.name.localeCompare(b.name);
+    }
+    if (as != null) return -1;
+    if (bs != null) return 1;
+    const av = a.createdAt ?? '';
+    const bv = b.createdAt ?? '';
+    return av < bv ? -sign : av > bv ? sign : a.name.localeCompare(b.name);
+  }
+
+  if (key === 'level') {
+    const cmp = (a.level || '').localeCompare(b.level || '');
+    return (sign * cmp) || a.name.localeCompare(b.name);
+  }
+
+  return sign * a.name.localeCompare(b.name);
+}
+
+/**
  * Tiered tree auto-layout.
  * - Y is derived from computed depth (computed depth drives the layout position).
  * - X is derived from subtree leaf widths (Reingold–Tilford style in-order pass).
@@ -69,10 +113,17 @@ export function computeDepths(nodes: TreeNode[]): Map<string, number> {
  */
 export function computeAutoLayout(
   nodes: TreeNode[],
-  options: { horizontalGap?: number; verticalGap?: number } = {},
+  options: {
+    horizontalGap?: number;
+    verticalGap?: number;
+    sortKey?: SortKey;
+    sortDir?: SortDir;
+  } = {},
 ): Map<string, { x: number; y: number }> {
   const horizontalGap = options.horizontalGap ?? HORIZONTAL_GAP;
   const verticalGap = options.verticalGap ?? VERTICAL_GAP;
+  const sortKey = options.sortKey ?? 'name';
+  const sortDir = options.sortDir ?? 'asc';
 
   const depths = computeDepths(nodes);
   const byId = new Map<string, TreeNode>(nodes.map((n) => [n.id, n]));
@@ -89,9 +140,11 @@ export function computeAutoLayout(
       childrenOf.set(parentId, siblings);
     }
   }
+  const order = (a: TreeNode, b: TreeNode) => compareNodes(a, b, sortKey, sortDir);
   for (const siblings of childrenOf.values()) {
-    siblings.sort((a, b) => a.name.localeCompare(b.name));
+    siblings.sort(order);
   }
+  roots.sort(order);
 
   // Give rows with a wide fan-out more vertical room so the connector lines have
   // space to separate before reaching the children. The threshold keeps small

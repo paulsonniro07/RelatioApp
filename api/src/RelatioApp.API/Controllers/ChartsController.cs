@@ -37,7 +37,14 @@ public class ChartsController : ControllerBase
         Guid chartId,
         [FromBody] UpdateChartDto input,
         CancellationToken ct)
-        => Ok(await _mediator.Send(new UpdateChartCommand(chartId, input.Name, input.ChartTypeId), ct));
+        => Ok(await _mediator.Send(
+            new UpdateChartCommand(
+                chartId,
+                input.Name,
+                input.ChartTypeId,
+                input.SortKey,
+                input.SortDir),
+            ct));
 
     [HttpDelete("{chartId:guid}")]
     public async Task<IActionResult> Delete(Guid chartId, CancellationToken ct)
